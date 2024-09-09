@@ -1,0 +1,17 @@
+[project]
+name = "farmer"
+version = "0.1.0"
+description = "Slack bot that tells you the status of your LSF jobs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "slack-bolt==1.20.0",
+]
+license.text = "AGPL-3.0-or-later"
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

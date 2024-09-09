@@ -24,7 +24,6 @@ coverage.xml
 .tox
 .cache
 .pytest_cache/
-.python-version
 pip
 .mypy_cache/
 
