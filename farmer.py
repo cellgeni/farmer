@@ -186,6 +186,9 @@ def handle_message_events(body, logger):
 
 
 # entrypoint of the script that actually invokes the app start in socket mode
-if __name__ == "__main__":
+def main():
     SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()
 
+
+if __name__ == "__main__":
+    main()
