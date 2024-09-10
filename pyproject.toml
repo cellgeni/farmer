@@ -12,6 +12,9 @@ classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 
+[project.scripts]
+farmer = "farmer.farmer:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
