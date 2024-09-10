@@ -5,6 +5,8 @@ description = "Slack bot that tells you the status of your LSF jobs"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "aiohttp>=3.10.5",
+    "aiorun>=2024.8.1",
     "slack-bolt==1.20.0",
 ]
 license.text = "AGPL-3.0-or-later"

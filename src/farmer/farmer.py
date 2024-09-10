@@ -4,11 +4,12 @@ import os
 import re
 import shlex
 import textwrap
+import subprocess
 from datetime import datetime
-from subprocess import PIPE, run
 
-from slack_bolt import App
-from slack_bolt.adapter.socket_mode import SocketModeHandler
+import aiorun
+from slack_bolt.async_app import AsyncApp
+from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 # setup loggggggg
 logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
@@ -49,10 +50,11 @@ def get_jobs(user: str) -> list:
     command = f"bjobs -u {user} -json -o 'all'"
     # run the actual capture of the jobs
     logging.debug(command)
-    result = run(
+    # TODO: make async
+    result = subprocess.run(
         command,
-        stdout=PIPE,
-        stderr=PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         env=bjobs_env,
         universal_newlines=True,
         shell=True,
@@ -131,12 +133,12 @@ def extract_username(message):
     return None
 
 # real init of the slack app with bot token (add socket handler to be explicit?)
-app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
+app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
 @app.message("jobs")
-def message_jobs(message, say):
+async def message_jobs(message, say):
     logging.info(f"message {message}")
     # who's pinging?
     rx = message["blocks"][0]["elements"][0]["elements"][0]["text"]
@@ -146,13 +148,13 @@ def message_jobs(message, say):
         user = message["user_profile"]["name"]
     # get jobs for user and say it back to them
     response_block = get_jobs(user)
-    say(blocks=response_block)
+    await say(blocks=response_block)
 
 # oh fancy you, wanna know more?
 # well here are the details for the job you asked for
 @app.action("job_details")
-def handle_job_details(ack, body, logger, client):
-    ack()
+async def handle_job_details(ack, body, logger, client):
+    await ack()
     user = body["user"]["username"]
     jobid = body["actions"][0]["value"]
     logger.info(f"Username = {user} - JobId = {jobid}")
@@ -160,10 +162,11 @@ def handle_job_details(ack, body, logger, client):
     bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
     command = f"bjobs -json -o 'all' {jobid}"
     logging.debug(command)
-    result = run(
+    # TODO: make async
+    result = subprocess.run(
         command,
-        stdout=PIPE,
-        stderr=PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         env=bjobs_env,
         universal_newlines=True,
         shell=True,
@@ -171,23 +174,27 @@ def handle_job_details(ack, body, logger, client):
     # parse jobs
     jobs = json.loads(result.stdout)
     jobs = jobs["RECORDS"][0]
-    client.chat_postMessage(channel=body["channel"]["id"], text=f"I hear you. You wanna know more about JOBID={jobid}")
+    await client.chat_postMessage(channel=body["channel"]["id"], text=f"I hear you. You wanna know more about JOBID={jobid}")
     # just dump jobs, remove any keys without values, pretty print
-    client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in jobs.items() if v}, indent=4) )
+    await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in jobs.items() if v}, indent=4) )
     # how about past jobs? well don't use bjobs we should go to elasticsearch and get you the past info
 
 # sending a message that we don't know?
 # tell them we don't know
 @app.event("message")
-def handle_message_events(body, logger):
+async def handle_message_events(body, logger):
     logger.warning("Unknown message")
     logger.warning(body)
     # add "wtf are you talkin about?" response
 
 
 # entrypoint of the script that actually invokes the app start in socket mode
+async def async_main():
+    await AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start_async()
+
+
 def main():
-    SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()
+    aiorun.run(async_main(), stop_on_unhandled_errors=True)
 
 
 if __name__ == "__main__":
