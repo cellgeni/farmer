@@ -251,12 +251,35 @@ ws_endpoint = WebsocketRPCEndpoint(
 ws_endpoint.register_route(ws_app, "/internal/ws")
 
 
-# entrypoint of the script that actually invokes the app start in socket mode
+def serve_uvicorn(server: uvicorn.Server):
+    # uvicorn doesn't deal terribly well with being embedded inside a
+    # larger application. To ensure a clean shutdown on ctrl-C, we need
+    # to start it in a slightly nonstandard way.
+    #
+    # For context, see <https://github.com/encode/uvicorn/issues/1579>,
+    # and the issues and pull requests linked from it.
+    async def server_cleanup():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            server.should_exit = True
+    # Instead of calling a private method, possibly this should be done
+    # by subclassing `uvicorn.Server` to make `Server.capture_signals()`
+    # a no-op?
+    return asyncio.gather(server_cleanup(), aiorun.shutdown_waits_for(server._serve()))
+
+
 async def async_main():
-    server = uvicorn.Server(uvicorn.Config(ws_app, port=8234)).serve()
-    slack = AsyncSocketModeHandler(slack_app, os.environ["SLACK_APP_TOKEN"]).start_async()
-    await asyncio.gather(server, slack)
-    # await server
+    server = uvicorn.Server(uvicorn.Config(ws_app, port=8234, lifespan="off"))
+    slack = AsyncSocketModeHandler(slack_app, os.environ["SLACK_APP_TOKEN"])
+    # slack.start_async() would not properly dispose of resources on
+    # exit, so we do it by hand...
+    await slack.connect_async()
+    try:
+        await serve_uvicorn(server)
+    finally:
+        logging.debug("farmer quitting")
+        await slack.close_async()
 
 
 def main():
