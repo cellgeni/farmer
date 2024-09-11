@@ -6,4 +6,6 @@ set -eo pipefail
 cd /nfs/cellgeni/slackbot
 
 # start the app
-uv run --locked farmer
+tmux \
+	new-session "uv run --locked farmer-server" \; \
+	split-window -h "uv run --locked farmer-reporter"
