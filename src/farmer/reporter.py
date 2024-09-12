@@ -106,3 +106,7 @@ async def async_main():
 def main():
     logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
     aiorun.run(async_main(), stop_on_unhandled_errors=True)
+
+
+if __name__ == "__main__":
+    main()
