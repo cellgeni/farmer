@@ -153,6 +153,7 @@ ws_endpoint.register_route(ws_app, "/internal/ws")
 
 class JobCompleteNotification(BaseModel):
     job_id: str
+    array_index: str | None
 
 
 @ws_app.post("/job-complete")
@@ -175,6 +176,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
     username = j["USER"]
     assert username == "ah37", "would message the wrong person"
     user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    job_id = notification.job_id if notification.array_index is None else f"{notification.job_id}[{notification.array_index}]"
     match j["STAT"]:
         case "DONE":
             result = "has succeeded"
@@ -182,7 +184,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
             result = "has failed"
         case other:
             result = f"is in state {other}"
-    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {notification.job_id} {result}.")
+    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {job_id} {result}.")
 
 
 def serve_uvicorn(server: uvicorn.Server):
