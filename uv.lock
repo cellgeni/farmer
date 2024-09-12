@@ -193,6 +193,7 @@ dependencies = [
     { name = "aiorun" },
     { name = "fastapi" },
     { name = "fastapi-websocket-rpc" },
+    { name = "pydantic" },
     { name = "slack-bolt" },
     { name = "uvicorn" },
 ]
@@ -203,6 +204,7 @@ requires-dist = [
     { name = "aiorun", specifier = ">=2024.8.1" },
     { name = "fastapi", specifier = ">=0.114.0" },
     { name = "fastapi-websocket-rpc", specifier = ">=0.1.27" },
+    { name = "pydantic", specifier = ">=2.9.1" },
     { name = "slack-bolt", specifier = "==1.20.0" },
     { name = "uvicorn", specifier = ">=0.30.6" },
 ]

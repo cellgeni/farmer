@@ -2,6 +2,14 @@
 
 Slack bot that tells you the status of your LSF jobs
 
+## Usage
+
+To be notified when jobs finish, you can use the included post-exec script:
+
+```console
+$ bsub ... -Ep /path/to/farmer/src/post-exec.sh
+```
+
 ## Development setup
 
 Install [uv][]:

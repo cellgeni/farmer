@@ -10,9 +10,10 @@ from datetime import datetime
 
 import aiorun
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel
 from fastapi_websocket_rpc.rpc_channel import RpcCaller
+from pydantic import BaseModel
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
@@ -251,6 +252,40 @@ ws_endpoint = WebsocketRPCEndpoint(
 ws_endpoint.register_route(ws_app, "/internal/ws")
 
 
+class JobCompleteNotification(BaseModel):
+    job_id: str
+
+
+@ws_app.post("/job-complete")
+async def job_complete(notification: JobCompleteNotification, bg: BackgroundTasks):
+    # We want to let the post-exec script finish as soon as possible, so
+    # return a response quickly and do the processing later.
+    bg.add_task(handle_job_complete, notification)
+
+
+async def handle_job_complete(notification: JobCompleteNotification):
+    # TODO: we should probably check that the job actually used the
+    #   post-exec script (to avoid providing an unauthenticated vector
+    #   to send confusing messages to the owners of arbitrary jobs)
+    # When we're notified, the job will still be in RUN state. So we
+    # need to wait a bit for things to quiesce (post-exec scripts, LSF
+    # bookkeeping, ...) before we ask what the state of the job is.
+    # TODO: if the job is still in RUN state, should we wait longer?
+    await asyncio.sleep(60)
+    j = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
+    username = j["USER"]
+    assert username == "ah37", "would message the wrong person"
+    user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    match j["STAT"]:
+        case "DONE":
+            result = "has succeeded"
+        case "EXIT":
+            result = "has failed"
+        case other:
+            result = f"is in state {other}"
+    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {notification.job_id} {result}.")
+
+
 def serve_uvicorn(server: uvicorn.Server):
     # uvicorn doesn't deal terribly well with being embedded inside a
     # larger application. To ensure a clean shutdown on ctrl-C, we need
@@ -270,7 +305,7 @@ def serve_uvicorn(server: uvicorn.Server):
 
 
 async def async_main():
-    server = uvicorn.Server(uvicorn.Config(ws_app, port=8234, lifespan="off"))
+    server = uvicorn.Server(uvicorn.Config(ws_app, host="0.0.0.0", port=8234, lifespan="off"))
     slack = AsyncSocketModeHandler(slack_app, os.environ["SLACK_APP_TOKEN"])
     # slack.start_async() would not properly dispose of resources on
     # exit, so we do it by hand...
