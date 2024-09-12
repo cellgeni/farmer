@@ -12,6 +12,9 @@ import aiorun
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
 
 
+logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
+
+
 # this is used to convert stupid LSF dates to python dates
 DATE_REGEX = re.compile(
     r"([A-Z]{1}[a-z]{2})(?:\s+)(\d{1,2}) (\d{2}:\d{2}:\d{2}) (\d{4})(?:\s?)"
@@ -104,7 +107,6 @@ async def async_main():
 
 
 def main():
-    logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
     aiorun.run(async_main(), stop_on_unhandled_errors=True)
 
 

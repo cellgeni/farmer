@@ -14,6 +14,9 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 
+logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s][%(levelname)s] %(message)s")
+
+
 # Shhhhhh: load credentials
 # !! please don't commit credentials.json !!
 for k, v in json.load(open("credentials.json", mode="rt")).items():
@@ -214,7 +217,6 @@ async def async_main():
 
 
 def main():
-    logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
     aiorun.run(async_main(), stop_on_unhandled_errors=True)
 
 
