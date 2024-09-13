@@ -12,7 +12,8 @@ from fastapi_websocket_rpc.rpc_channel import RpcCaller
 from pydantic import BaseModel
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
-
+from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichTextElementParts, \
+    RichTextPreformattedElement, ContextBlock, PlainTextObject
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
@@ -175,17 +176,52 @@ async def handle_job_complete(notification: JobCompleteNotification):
     j = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
     username = j["USER"]
     assert username == "ah37", "would message the wrong person"
-    user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     job_id = notification.job_id if notification.array_index is None else f"{notification.job_id}[{notification.array_index}]"
     cluster = (await rm.reporter.get_cluster_name()).result
-    match j["STAT"]:
+    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], name=j["JOB_NAME"], command=j["COMMAND"])
+
+
+async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, name: str, command: str):
+    user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    match state:
         case "DONE":
             result = "has succeeded"
+            result_emoji = "white_check_mark"
         case "EXIT":
             result = "has failed"
+            result_emoji = "x"
         case other:
             result = f"is in state {other}"
-    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {job_id} on farm {cluster} {result}.")
+            result_emoji = "thinking_face"
+    await slack_app.client.chat_postMessage(
+        channel=user["id"],
+        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:\nThe command was: {command} (job name: {name})",
+        blocks=[
+            RichTextBlock(elements=[
+                RichTextSectionElement(elements=[
+                    RichTextElementParts.Text(text="Your job "),
+                    RichTextElementParts.Text(
+                        text=job_id,
+                        style=RichTextElementParts.TextStyle(bold=True),
+                    ),
+                    RichTextElementParts.Text(text=" on farm "),
+                    RichTextElementParts.Text(
+                        text=cluster,
+                        style=RichTextElementParts.TextStyle(bold=True),
+                    ),
+                    RichTextElementParts.Text(text=f" {result} "),
+                    RichTextElementParts.Emoji(name=result_emoji),
+                    RichTextElementParts.Text(text="\nThe command was:"),
+                ]),
+                RichTextPreformattedElement(elements=[
+                    RichTextElementParts.Text(text=command),
+                ]),
+            ]),
+            ContextBlock(elements=[
+                PlainTextObject(text=f"Job name: {name}", emoji=False),
+            ]),
+        ],
+    )
 
 
 def serve_uvicorn(server: uvicorn.Server):
