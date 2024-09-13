@@ -14,7 +14,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 
-logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s][%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
 # Shhhhhh: load credentials

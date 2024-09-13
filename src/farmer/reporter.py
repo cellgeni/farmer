@@ -12,7 +12,7 @@ import aiorun
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
 
 
-logging.basicConfig(level="DEBUG", format="[%(asctime)s][%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
 # this is used to convert stupid LSF dates to python dates
