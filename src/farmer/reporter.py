@@ -32,10 +32,45 @@ def lsf_date_to_datetime(lsftime):
         return None
 
 
+class FarmerReporter:
+    def __init__(self) -> None:
+        self._cluster_name: str | None = None
+
+    async def get_cluster_name(self) -> str:
+        """Gets the name of the current LSF cluster."""
+        if self._cluster_name:
+            return self._cluster_name
+        # We should really use pythonlsf, but IBM also do it this way:
+        # <https://github.com/IBMSpectrumComputing/lsf-utils/blob/fe9ba1ddf9897d9e36899c3b8d671cf7ea979bdf/bsubmit/bsubmit.cpp#L38>
+        proc = await asyncio.create_subprocess_exec(
+            "lsid",
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        assert proc.returncode == 0, proc.returncode
+        assert len(stderr) == 0, stderr
+        prefix = b"My cluster name is "
+        for line in stdout.splitlines():
+            if line.startswith(prefix):
+                self._cluster_name = line[len(prefix):].decode()
+                return self._cluster_name
+        assert False, f"lsid failed: {stdout}"
+
+
 # NB:
 # - RPC calls may only use keyword arguments, so make the methods keyword-only for clarity
 # - return type annotations are mandatory
-class FarmerReporter(RpcMethodsBase):
+class FarmerReporterRpc(RpcMethodsBase):
+    def __init__(self, reporter: FarmerReporter) -> None:
+        super().__init__()
+        self.reporter = reporter
+
+    async def get_cluster_name(self) -> str:
+        """Gets the name of the current LSF cluster."""
+        return await self.reporter.get_cluster_name()
+
     async def get_jobs(self, *, user: str) -> Any:
         # sanitize because 1337 hax0rdz may be around?
         user = shlex.quote(user)
@@ -92,6 +127,7 @@ class FarmerReporter(RpcMethodsBase):
 
 
 async def async_main():
+    reporter = FarmerReporter()
     # TODO: retry logic?
     # (there should be some built into fastapi_websocket_rpc)
     disconnected = asyncio.Event()
@@ -99,7 +135,7 @@ async def async_main():
         disconnected.set()
     async with WebSocketRpcClient(
             "ws://localhost:8234/internal/ws",
-            FarmerReporter(),
+            FarmerReporterRpc(reporter),
             on_disconnect=[on_disconnect],
     ):
         await disconnected.wait()

@@ -177,6 +177,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
     assert username == "ah37", "would message the wrong person"
     user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     job_id = notification.job_id if notification.array_index is None else f"{notification.job_id}[{notification.array_index}]"
+    cluster = (await rm.reporter.get_cluster_name()).result
     match j["STAT"]:
         case "DONE":
             result = "has succeeded"
@@ -184,7 +185,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
             result = "has failed"
         case other:
             result = f"is in state {other}"
-    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {job_id} {result}.")
+    await slack_app.client.chat_postMessage(channel=user["id"], text=f"Your job {job_id} on farm {cluster} {result}.")
 
 
 def serve_uvicorn(server: uvicorn.Server):
