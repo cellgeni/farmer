@@ -18,6 +18,18 @@ from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichT
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
+# When our job-complete notification arrives, the job is still "running"
+# (since JOB_INCLUDE_POSTPROC is set). We need to give LSF a bit of time
+# to finish running post-execution scripts and circulate the information
+# that the job has, in fact, finished.
+LSF_CLEANUP_GRACE_SECONDS = 20
+
+# When we handle the last job of a job array, we need to keep track of
+# its ID for a few moments so that we don't end up handling it again
+# (for example, if two jobs finish simultaneously).
+RECENTLY_HANDLED_JOBS = set()
+
+
 # Shhhhhh: load credentials
 # !! please don't commit credentials.json !!
 for k, v in json.load(open("credentials.json", mode="rt")).items():
@@ -177,15 +189,27 @@ async def handle_job_complete(notification: JobCompleteNotification):
     # need to wait a bit for things to quiesce (post-exec scripts, LSF
     # bookkeeping, ...) before we ask what the state of the job is.
     # TODO: if the job is still in RUN state, should we wait longer?
-    await asyncio.sleep(20)
-    jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
-    assert jobs
-    if len(jobs) == 1:
-        await handle_job_complete_inner(jobs[0])
-    else:
-        all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
-        if all_done:
+    await asyncio.sleep(LSF_CLEANUP_GRACE_SECONDS)
+    if notification.job_id in RECENTLY_HANDLED_JOBS:
+        logging.debug("skipping job %r, already handled", notification.job_id)
+        return
+    try:
+        RECENTLY_HANDLED_JOBS.add(notification.job_id)
+        jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
+        assert jobs
+        if len(jobs) == 1:
             await handle_job_complete_inner(jobs[0])
+        else:
+            all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
+            if all_done:
+                await handle_job_complete_inner(jobs[0])
+    finally:
+        # TODO: rather than waiting for the remaining tasks to finish,
+        #   we should keep track of and proactively cancel them
+        try:
+            await asyncio.sleep(LSF_CLEANUP_GRACE_SECONDS * 2)
+        finally:
+            RECENTLY_HANDLED_JOBS.remove(notification.job_id)
 
 
 async def handle_job_complete_inner(j: dict):
