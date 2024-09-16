@@ -103,7 +103,7 @@ class FarmerReporterRpc(RpcMethodsBase):
             for time_field in ["SUBMIT_TIME", "START_TIME", "FINISH_TIME"]:
                 try:
                     jobs[idx][time_field] = lsf_date_to_datetime(job[time_field])
-                except:
+                except Exception:
                     pass
         return jobs
 
