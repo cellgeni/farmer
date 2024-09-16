@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichTextElementParts, \
-    RichTextPreformattedElement, ContextBlock, PlainTextObject
+    RichTextPreformattedElement, ContextBlock, PlainTextObject, HeaderBlock, MarkdownTextObject, SectionBlock, \
+    ButtonElement, DividerBlock, Block
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
@@ -47,6 +48,41 @@ def extract_username(message):
         return match.group(1)
     return None
 
+
+def make_job_blocks(job: dict) -> list[Block]:
+    # first part is the job id, queue and statues
+    job_id = f"{job['JOBID']}[{job['JOBINDEX']}]" if job["JOBINDEX"] != "0" else job["JOBID"]
+    text = [f"JOBID={job_id} | STAT={job['STAT']} | QUEUE={job['QUEUE']}"]
+    if job['STAT'] != "PEND":
+        text.append(f"EXEC_HOST={' '.join(set(job['EXEC_HOST'].split(':')))}")
+    # second part is when we add all the times submit, start, run
+    times = [f"SUBMIT_TIME={job['SUBMIT_TIME']}"]
+    if job["STAT"] == "RUN":
+        times.append(f"START_TIME={job['START_TIME']}")
+        runtime = int(job['RUN_TIME'].replace(" second(s)", "")) // 60
+        times.append(f"RUN_TIME={runtime}min")
+    text.append(" | ".join(times))
+    # then we add all the memory
+    mem = [f"MEMLIMIT={job['MEMLIMIT']}"]
+    if job["STAT"] == "RUN":
+        mem.append(f"AVG_MEM={job['AVG_MEM']}")
+        mem.append(f"MEM_EFFICIENCY={job['MEM_EFFICIENCY']}")
+    text.append(" | ".join(mem).replace("bytes", ""))
+    # here we should add all the CPU /GPU whatever else we need to show in the summary
+    # keep it simple, this is supposed to be succinct, they can click for a job detail action later
+    return [
+        SectionBlock(
+            text=MarkdownTextObject(text="\n".join(text)),
+            accessory=ButtonElement(
+                text="View Details",
+                action_id="job_details",
+                value=f"{job['JOBID']}|{job['JOBINDEX']}"
+            )
+        ),
+        DividerBlock(),
+    ]
+
+
 # real init of the slack app with bot token (add socket handler to be explicit?)
 slack_app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
@@ -75,41 +111,7 @@ async def message_jobs(message, say):
     # also "sections" (aka tables) in slack are horrid
     # sorry for you future me trying to style that
     for job in jobs[:20]:
-        # first part is the job id, queue and statues
-        text = [ f"JOBID={job['JOBID']} | STAT={job['STAT']} | QUEUE={job['QUEUE']}" ]
-        if job['STAT']!="PEND":
-            text.append( f"EXEC_HOST={' '.join(set(job['EXEC_HOST'].split(':')))}" )
-        # second part is when we add all the times submit, start, run
-        times = [ f"SUBMIT_TIME={job['SUBMIT_TIME']}" ]
-        if job["STAT"]=="RUN":
-            times.append( f"START_TIME={job['START_TIME']}" )
-            runtime = int(job['RUN_TIME'].replace(" second(s)",""))//60
-            times.append( f"RUN_TIME={runtime}min" )
-        text.append( " | ".join(times) )
-        # then we add all the memory
-        mem = [ f"MEMLIMIT={job['MEMLIMIT']}" ]
-        if job["STAT"]=="RUN":
-            mem.append( f"AVG_MEM={job['AVG_MEM']}" )
-            mem.append( f"MEM_EFFICIENCY={job['MEM_EFFICIENCY']}" )
-        text.append( " | ".join(mem).replace("bytes","") )
-        # here we should add all the CPU /GPU whatever else we need to show in the summary
-        # keep it simple, this is supposed to be succinct, they can click for a job detail action later
-        blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": '\n'.join(text),
-                },
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "View Details"},
-                    "action_id": "job_details",
-                    "value": job["JOBID"],
-                },
-            }
-        )
-        blocks.append({"type": "divider"})
+        blocks.extend(make_job_blocks(job))
     await say(blocks=blocks)
 
 # oh fancy you, wanna know more?
@@ -118,18 +120,28 @@ async def message_jobs(message, say):
 async def handle_job_details(ack, body, logger, client):
     await ack()
     user = body["user"]["username"]
-    job_id = body["actions"][0]["value"]
-    logger.info(f"Username = {user} - JobId = {job_id}")
+    job_id, array_index = body["actions"][0]["value"].split("|")
+    logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
     jobs = (await rm.reporter.get_job_details(job_id=job_id)).result
     await client.chat_postMessage(channel=body["channel"]["id"], text=f"I hear you. You wanna know more about JOBID={job_id}")
     # just dump jobs, remove any keys without values, pretty print
     if len(jobs) == 1:
         job = jobs[0]
         await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
+    elif array_index:
+        job = next(j for j in jobs if j["JOBINDEX"] == array_index)
+        await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
     else:
-        # TODO: allow viewing details for job array members
-        await client.chat_postMessage(channel=body["channel"]["id"], text=f"{job_id} is a job array – use bjobs by hand for now")
+        # currently this code is unused
+        # TODO: do we want to condense job arrays into a single list entry by default?
+        blocks = [
+            HeaderBlock(text=PlainTextObject(text=f"📝 Jobs in array {job_id} (only showing {min(len(jobs), 20)} of {len(jobs)})", emoji=True)),
+        ]
+        for job in jobs[:20]:
+            blocks.append(make_job_blocks(job))
+        await client.chat_postMessage(channel=body["channel"]["id"], blocks=blocks)
     # how about past jobs? well don't use bjobs we should go to elasticsearch and get you the past info
+
 
 # sending a message that we don't know?
 # tell them we don't know
