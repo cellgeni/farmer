@@ -172,7 +172,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
     # need to wait a bit for things to quiesce (post-exec scripts, LSF
     # bookkeeping, ...) before we ask what the state of the job is.
     # TODO: if the job is still in RUN state, should we wait longer?
-    await asyncio.sleep(60)
+    await asyncio.sleep(20)
     j = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
     username = j["USER"]
     assert username == "ah37", "would message the wrong person"
