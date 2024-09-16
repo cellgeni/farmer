@@ -80,20 +80,21 @@ class FarmerReporterRpc(RpcMethodsBase):
         # get jobs — we copy the environment because we need al the LSF crap to get bjobs info
         bjobs_env = os.environ.copy()
         bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-        command = f"bjobs -u {user} -json -o 'all'"
         # run the actual capture of the jobs
-        logging.debug(command)
-        # TODO: make async
-        result = subprocess.run(
-            command,
+        proc = await asyncio.create_subprocess_exec(
+            "bjobs",
+            "-u",
+            user,
+            "-o",
+            "all",
+            "-json",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=bjobs_env,
-            universal_newlines=True,
-            shell=True,
         )
+        stdout, _ = await proc.communicate()
         # parse jobs
-        jobs = json.loads(result.stdout)
+        jobs = json.loads(stdout)
         jobs = jobs["RECORDS"]
         # sort by status and id because I'm nice like that
         jobs = sorted(jobs, key=lambda j: (j['STAT'],j['JOBID']))
@@ -109,19 +110,19 @@ class FarmerReporterRpc(RpcMethodsBase):
     async def get_job_details(self, *, job_id: str) -> Any:
         bjobs_env = os.environ.copy()
         bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-        command = f"bjobs -json -o 'all' {job_id}"
-        logging.debug(command)
-        # TODO: make async
-        result = subprocess.run(
-            command,
+        proc = await asyncio.create_subprocess_exec(
+            "bjobs",
+            "-json",
+            "-o",
+            "all",
+            job_id,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=bjobs_env,
-            universal_newlines=True,
-            shell=True,
         )
+        stdout, _ = await proc.communicate()
         # parse jobs
-        jobs = json.loads(result.stdout)
+        jobs = json.loads(stdout)
         job = jobs["RECORDS"][0]
         return job
 
