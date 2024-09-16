@@ -108,6 +108,11 @@ class FarmerReporterRpc(RpcMethodsBase):
         return jobs
 
     async def get_job_details(self, *, job_id: str) -> Any:
+        """Get LSF details for a job ID.
+
+        If the job ID corresponds to an array job, multiple records will
+        be returned.
+        """
         bjobs_env = os.environ.copy()
         bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
         proc = await asyncio.create_subprocess_exec(
@@ -123,8 +128,8 @@ class FarmerReporterRpc(RpcMethodsBase):
         stdout, _ = await proc.communicate()
         # parse jobs
         jobs = json.loads(stdout)
-        job = jobs["RECORDS"][0]
-        return job
+        assert jobs["JOBS"] == len(jobs["RECORDS"])
+        return jobs["RECORDS"]
 
 
 async def async_main():

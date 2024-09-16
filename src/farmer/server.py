@@ -108,10 +108,15 @@ async def handle_job_details(ack, body, logger, client):
     user = body["user"]["username"]
     job_id = body["actions"][0]["value"]
     logger.info(f"Username = {user} - JobId = {job_id}")
-    job = (await rm.reporter.get_job_details(job_id=job_id)).result
+    jobs = (await rm.reporter.get_job_details(job_id=job_id)).result
     await client.chat_postMessage(channel=body["channel"]["id"], text=f"I hear you. You wanna know more about JOBID={job_id}")
     # just dump jobs, remove any keys without values, pretty print
-    await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
+    if len(jobs) == 1:
+        job = jobs[0]
+        await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
+    else:
+        # TODO: allow viewing details for job array members
+        await client.chat_postMessage(channel=body["channel"]["id"], text=f"{job_id} is a job array – use bjobs by hand for now")
     # how about past jobs? well don't use bjobs we should go to elasticsearch and get you the past info
 
 # sending a message that we don't know?
@@ -173,10 +178,20 @@ async def handle_job_complete(notification: JobCompleteNotification):
     # bookkeeping, ...) before we ask what the state of the job is.
     # TODO: if the job is still in RUN state, should we wait longer?
     await asyncio.sleep(20)
-    j = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
+    jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
+    assert jobs
+    if len(jobs) == 1:
+        await handle_job_complete_inner(jobs[0])
+    else:
+        all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
+        if all_done:
+            await handle_job_complete_inner(jobs[0])
+
+
+async def handle_job_complete_inner(j: dict):
     username = j["USER"]
     assert username == "ah37", "would message the wrong person"
-    job_id = notification.job_id if notification.array_index is None else f"{notification.job_id}[{notification.array_index}]"
+    job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
     await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], name=j["JOB_NAME"], command=j["COMMAND"])
 
