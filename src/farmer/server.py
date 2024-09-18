@@ -14,7 +14,9 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichTextElementParts, \
     RichTextPreformattedElement, ContextBlock, PlainTextObject, HeaderBlock, MarkdownTextObject, SectionBlock, \
-    ButtonElement, DividerBlock, Block
+    ButtonElement, DividerBlock, Block, RichTextListElement
+from slack_sdk.models.views import View
+from slack_sdk.web.async_client import AsyncWebClient
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
@@ -150,6 +152,37 @@ async def handle_message_events(body, logger):
     logger.warning("Unknown message")
     logger.warning(body)
     # add "wtf are you talkin about?" response
+
+
+@slack_app.event("app_home_opened")
+async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
+    user_id = event["user"]
+    logger.info(f"handling app home open for {user_id}")
+    await ack()
+    user = await client.users_info(user=user_id)
+    await client.views_publish(user_id=user_id, view=View(type="home", blocks=[
+        HeaderBlock(text=PlainTextObject(text=f"Hello, @{user['user']['name']}!", emoji=False)),
+        SectionBlock(text="Head to the “Messages” tab to interact with Farmer."),
+        # TODO: can we include a button to take them there?
+        # ButtonElement(text="Chat with Farmer", url="slack://app?team={}&id={}&tab=messages"),
+        RichTextBlock(elements=[
+            RichTextSectionElement(elements=[
+                RichTextElementParts.Text(text="Farmer understands the following commands:"),
+            ]),
+            RichTextListElement(style="bullet", elements=[
+                RichTextSectionElement(elements=[
+                    RichTextElementParts.Text(text="jobs", style=RichTextElementParts.TextStyle(code=True)),
+                    RichTextElementParts.Text(text=": list your currently-running (and pending) jobs"),
+                ]),
+                RichTextSectionElement(elements=[
+                    RichTextElementParts.Text(text="jobs for USERNAME", style=RichTextElementParts.TextStyle(code=True)),
+                    RichTextElementParts.Text(text=": list "),
+                    RichTextElementParts.Text(text="USERNAME", style=RichTextElementParts.TextStyle(code=True)),
+                    RichTextElementParts.Text(text="’s currently-running (and pending) jobs"),
+                ]),
+            ]),
+        ]),
+    ]))
 
 
 class ReporterManager:
