@@ -58,6 +58,40 @@ class FarmerReporter:
                 return self._cluster_name
         assert False, f"lsid failed: {stdout}"
 
+    async def _bjobs(self, *args: str):
+        """Run bjobs, returning the parsed JSON result.
+
+        Calls are rate limited in an attempt to avoid overwhelming LSF
+        with requests; if the rate limit is exceeded, calls will wait
+        their turn.
+        """
+        # TODO: ratelimit
+        # copy the environment because we need the LSF variables to get bjobs info
+        bjobs_env = os.environ.copy()
+        bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
+        proc = await asyncio.create_subprocess_exec(
+            "bjobs",
+            "-o",
+            "all",
+            "-json",
+            *args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=bjobs_env,
+        )
+        stdout, _ = await proc.communicate()
+        jobs = json.loads(stdout)
+        return jobs
+
+    async def bjobs_for_user(self, user: str):
+        """Get bjobs output for a user's currently-running jobs."""
+        return await self._bjobs("-u", user)
+
+    async def bjobs_by_id(self, job_id: str):
+        """Get bjobs output for a job ID."""
+        # TODO: batching
+        return await self._bjobs(job_id)
+
 
 # NB:
 # - RPC calls may only use keyword arguments, so make the methods keyword-only for clarity
@@ -72,29 +106,8 @@ class FarmerReporterRpc(RpcMethodsBase):
         return await self.reporter.get_cluster_name()
 
     async def get_jobs(self, *, user: str) -> Any:
-        # sanitize because 1337 hax0rdz may be around?
-        user = shlex.quote(user)
-        # clock in whend id we get the info
-        timestamp = datetime.now().isoformat(sep="T", timespec="seconds")
-        logging.info(f"Capturing jobs at {timestamp} for {user}")
-        # get jobs — we copy the environment because we need al the LSF crap to get bjobs info
-        bjobs_env = os.environ.copy()
-        bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-        # run the actual capture of the jobs
-        proc = await asyncio.create_subprocess_exec(
-            "bjobs",
-            "-u",
-            user,
-            "-o",
-            "all",
-            "-json",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=bjobs_env,
-        )
-        stdout, _ = await proc.communicate()
-        # parse jobs
-        jobs = json.loads(stdout)
+        logging.info(f"Capturing jobs for {user}")
+        jobs = await self.reporter.bjobs_for_user(user)
         jobs = jobs["RECORDS"]
         # sort by status and id because I'm nice like that
         jobs = sorted(jobs, key=lambda j: (j['STAT'],j['JOBID']))
@@ -113,21 +126,7 @@ class FarmerReporterRpc(RpcMethodsBase):
         If the job ID corresponds to an array job, multiple records will
         be returned.
         """
-        bjobs_env = os.environ.copy()
-        bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-        proc = await asyncio.create_subprocess_exec(
-            "bjobs",
-            "-json",
-            "-o",
-            "all",
-            job_id,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=bjobs_env,
-        )
-        stdout, _ = await proc.communicate()
-        # parse jobs
-        jobs = json.loads(stdout)
+        jobs = await self.reporter.bjobs_by_id(job_id)
         assert jobs["JOBS"] == len(jobs["RECORDS"])
         return jobs["RECORDS"]
 
