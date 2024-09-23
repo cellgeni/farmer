@@ -89,6 +89,7 @@ class FarmerReporter:
 
     async def bjobs_for_user(self, user: str):
         """Get bjobs output for a user's currently-running jobs."""
+        assert user != "all", "bjobs treats the 'all' user specially"
         return await self._bjobs("-u", user)
 
     async def bjobs_by_id(self, job_id: str):
