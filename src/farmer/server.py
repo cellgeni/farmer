@@ -171,6 +171,12 @@ async def handle_message_events(body, logger):
     # add "wtf are you talkin about?" response
 
 
+@slack_app.event("message")
+async def handle_other_message():
+    # This handler is needed to silence warnings from slack-bolt.
+    pass
+
+
 @slack_app.event("app_home_opened")
 async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
     user_id = event["user"]
