@@ -10,19 +10,22 @@ To be notified when jobs finish, you can use the included post-exec script:
 $ bsub ... -Ep /path/to/farmer/src/post-exec.sh
 ```
 
-## Development setup
+## Preemptively Answered Questions
 
-Install [uv][]:
+- **I don't use bsub, I use Nextflow** – Nextflow has built-in support for sending notifications when jobs finish. For example: `nextflow run -N you@email.example`
 
-```console
-$ curl -LsSf https://astral.sh/uv/install.sh | sh # Linux/macOS
-$ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" # Windows
-```
+- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/path/to/farmer/src/post-exec.sh"}, {"cleanup": true}]'`
 
-Install the app and its dependencies:
+  If you want to be notified only when a _group_ of wr jobs has completed, add a job to send the notification:
 
-```console
-$ uv sync
-```
+  ```console
+  $ echo /path/to/farmer/src/post-exec.sh | wr add --deps notify
+  ```
+  
+  Then add your jobs to the `notify` dependency group, using a command like `wr add --dep_grps notify`.
+  
+  Note that you only need to run the first command once – it will automatically notify you again if you add more commands with `--dep_grps notify` in the future.
 
-[uv]: https://docs.astral.sh/uv/
+## Development
+
+See [HACKING.md](HACKING.md).
