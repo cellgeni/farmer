@@ -269,10 +269,10 @@ async def handle_job_complete_inner(j: dict):
     assert username == "ah37", "would message the wrong person"
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
-    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], name=j["JOB_NAME"], command=j["COMMAND"])
+    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], exit_reason=j["EXIT_REASON"], name=j["JOB_NAME"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, name: str, command: str):
+async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, exit_reason: str, name: str, command: str):
     user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     match state:
         case "DONE":
@@ -284,9 +284,10 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
         case other:
             result = f"is in state {other}"
             result_emoji = "thinking_face"
+    reason = f" (reason: {exit_reason!r})" if exit_reason else ""
     await slack_app.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:\nThe command was: {command} (job name: {name})",
+        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nThe command was: {command} (job name: {name})",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -302,6 +303,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                     ),
                     RichTextElementParts.Text(text=f" {result} "),
                     RichTextElementParts.Emoji(name=result_emoji),
+                    RichTextElementParts.Text(text=reason),
                     RichTextElementParts.Text(text="\nThe command was:"),
                 ]),
                 RichTextPreformattedElement(elements=[
