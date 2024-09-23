@@ -88,7 +88,17 @@ def make_job_blocks(job: dict) -> list[Block]:
 # real init of the slack app with bot token (add socket handler to be explicit?)
 slack_app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
-@slack_app.message("ping")
+
+async def dms_only(message):
+    """Filter for messages sent in a DM between two users.
+
+    This is a listener matcher, see the Slack Bolt docs:
+    <https://tools.slack.dev/bolt-python/concepts/listener-middleware>
+    """
+    return message.get("channel_type") == "im"
+
+
+@slack_app.message("ping", [dms_only])
 async def message_ping(ack, say):
     await ack()
     await say("hello! I am Farmer.")
@@ -97,7 +107,7 @@ async def message_ping(ack, say):
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
-@slack_app.message("jobs")
+@slack_app.message("jobs", [dms_only])
 async def message_jobs(message, say):
     logging.info(f"message {message}")
     # who's pinging?
@@ -154,7 +164,7 @@ async def handle_job_details(ack, body, logger, client):
 
 # sending a message that we don't know?
 # tell them we don't know
-@slack_app.event("message")
+@slack_app.event("message", [dms_only])
 async def handle_message_events(body, logger):
     logger.warning("Unknown message")
     logger.warning(body)
