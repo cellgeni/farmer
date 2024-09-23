@@ -300,10 +300,20 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
         case other:
             result = f"is in state {other}"
             result_emoji = "thinking_face"
-    reason = f" (reason: {exit_reason!r})" if exit_reason else ""
+    reason = f" (reason: {exit_reason!r})" if exit_reason else " "
+    if len(command) <= 200:
+        command_desc = "The command was:"
+    else:
+        command_desc = "The command (truncated due to length) was:"
+        command = command[:200]
+    # we want to truncate commands based on both byte length *and* line length
+    if len(commandlines := command.splitlines(keepends=True)) > 6:
+        command_desc = "The command (truncated due to length) was:"
+        command = "".join(commandlines[:6])
+    footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
     await slack_app.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nThe command was: {command} (job name: {name})",
+        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\n{command_desc} {command}. {footer}",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -320,14 +330,14 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                     RichTextElementParts.Text(text=f" {result} "),
                     RichTextElementParts.Emoji(name=result_emoji),
                     RichTextElementParts.Text(text=reason),
-                    RichTextElementParts.Text(text="\nThe command was:"),
+                    RichTextElementParts.Text(text=f"\n{command_desc}"),
                 ]),
                 RichTextPreformattedElement(elements=[
                     RichTextElementParts.Text(text=command),
                 ]),
             ]),
             ContextBlock(elements=[
-                PlainTextObject(text=f"Job name: {name}", emoji=False),
+                PlainTextObject(text=footer, emoji=False),
             ]),
         ],
     )
