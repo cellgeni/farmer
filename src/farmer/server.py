@@ -88,6 +88,13 @@ def make_job_blocks(job: dict) -> list[Block]:
 # real init of the slack app with bot token (add socket handler to be explicit?)
 slack_app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
+@slack_app.message("ping")
+async def message_ping(ack, say):
+    await ack()
+    await say("hello! I am Farmer.")
+    cluster = (await rm.reporter.get_cluster_name()).result
+    await say(f"I am running on cluster {cluster!r}.")
+
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
 @slack_app.message("jobs")
