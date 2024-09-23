@@ -35,6 +35,8 @@ def lsf_date_to_datetime(lsftime):
 class FarmerReporter:
     def __init__(self) -> None:
         self._cluster_name: str | None = None
+        # permit at most this many simultaneous bjobs invocations
+        self._bjobs_sem = asyncio.BoundedSemaphore(1)
 
     async def get_cluster_name(self) -> str:
         """Gets the name of the current LSF cluster."""
@@ -65,21 +67,23 @@ class FarmerReporter:
         with requests; if the rate limit is exceeded, calls will wait
         their turn.
         """
-        # TODO: ratelimit
-        # copy the environment because we need the LSF variables to get bjobs info
-        bjobs_env = os.environ.copy()
-        bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-        proc = await asyncio.create_subprocess_exec(
-            "bjobs",
-            "-o",
-            "all",
-            "-json",
-            *args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=bjobs_env,
-        )
-        stdout, _ = await proc.communicate()
+        async with self._bjobs_sem:
+            # copy the environment because we need the LSF variables to get bjobs info
+            bjobs_env = os.environ.copy()
+            bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
+            proc = await asyncio.create_subprocess_exec(
+                "bjobs",
+                "-o",
+                "all",
+                "-json",
+                *args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=bjobs_env,
+            )
+            stdout, _ = await proc.communicate()
+            # TODO: ratelimit in a way that doesn't slow down callers
+            await asyncio.sleep(10)
         jobs = json.loads(stdout)
         return jobs
 
