@@ -54,6 +54,7 @@ class BjobsQuery(ABC):
     NB: this means that if you hold `lock` for an extended period,
     processing of bjobs queries will stop until you release it!
     """
+    fut: asyncio.Future = field(default_factory=lambda: asyncio.get_running_loop().create_future(), init=False)
     lock: asyncio.Lock | None = field(default_factory=asyncio.Lock, init=False)
     processing: bool = field(default=False, init=False)
 
@@ -77,7 +78,7 @@ class BjobsQueryUser(BjobsQuery):
 @dataclass
 class BjobsQueryIds(BjobsQuery):
     """Request bjobs output for a list of job IDs."""
-    ids: list[str]
+    ids: set[str]
 
     def to_args(self) -> list[str]:
         # LSF job IDs can be up to 10 digits long, so n jobs will take
@@ -90,7 +91,7 @@ class BjobsQueryIds(BjobsQuery):
         # environment variables alone on my system, so we can't usefully
         # rely on that...)
         assert 0 < len(self.ids) < 182
-        return self.ids
+        return list(self.ids)
 
 
 class FarmerReporter:
@@ -100,8 +101,9 @@ class FarmerReporter:
         self._cluster_name: str | None = None
         # permit at most this many simultaneous bjobs invocations
         self._bjobs_sem = asyncio.BoundedSemaphore(1)
-        self._bjobs_queue: asyncio.Queue[tuple[asyncio.Future, BjobsQuery]] = asyncio.Queue()
+        self._bjobs_queue: asyncio.Queue[BjobsQuery] = asyncio.Queue()
         self._last_bjobs_call = time.monotonic_ns()
+        self._latest_bjobs_ids_query: BjobsQueryIds | None = None
 
     async def start(self):
         self._bjobs_worker_instance = asyncio.create_task(self._bjobs_worker())
@@ -165,7 +167,7 @@ class FarmerReporter:
         so there should usually only be a single worker running.
         """
         while True:
-            fut, query = await self._bjobs_queue.get()
+            query = await self._bjobs_queue.get()
             logging.info("got query %r", query)
             lock = query.lock or contextlib.nullcontext()
             async with lock:
@@ -178,12 +180,12 @@ class FarmerReporter:
                     await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
                 result = await self._bjobs(*query.to_args())
             except CancelledError:
-                fut.cancel()
+                query.fut.cancel()
                 raise
             except Exception as e:
-                fut.set_exception(e)
+                query.fut.set_exception(e)
             else:
-                fut.set_result(result)
+                query.fut.set_result(result)
             finally:
                 self._bjobs_queue.task_done()
 
@@ -193,9 +195,8 @@ class FarmerReporter:
         The returned Future will resolve with the result of bjobs, or
         with an exception or cancellation as appropriate.
         """
-        fut = asyncio.get_running_loop().create_future()
-        await self._bjobs_queue.put((fut, query))
-        return fut
+        await self._bjobs_queue.put(query)
+        return query.fut
 
     async def bjobs_for_user(self, user: str):
         """Get bjobs output for a user's currently-running jobs."""
@@ -203,11 +204,44 @@ class FarmerReporter:
         fut = await self.bjobs(BjobsQueryUser(user))
         return await fut
 
+    def _unbatch_bjobs_by_id(self, job_id: str, data):
+        """Undo the batching of bjobs_by_id results."""
+        data["JOBS"] = 1
+        # TODO: avoid O(n^2) behaviour from every task doing its own
+        #   scan over all records
+        data["RECORDS"] = [r for r in data["RECORDS"] if r["JOBID"] == job_id]
+        assert len(data["RECORDS"]) == 1
+        return data
+
     async def bjobs_by_id(self, job_id: str):
         """Get bjobs output for a job ID."""
-        # TODO: batching
-        fut = await self.bjobs(BjobsQueryIds([job_id]))
-        return await fut
+        while True:
+            query: BjobsQueryIds | None = self._latest_bjobs_ids_query
+            if not query:
+                # start a new query
+                logging.debug("starting a new query for %r", job_id)
+                self._latest_bjobs_ids_query = BjobsQueryIds({job_id})
+                fut = await self.bjobs(self._latest_bjobs_ids_query)
+                return self._unbatch_bjobs_by_id(job_id, await fut)
+            # we have a pending query we might be able to add to
+            async with query.lock:
+                if query != self._latest_bjobs_ids_query:
+                    # we were preempted! try again.
+                    logging.debug("preempted (was %r now %r) when trying to add %r", query, self._latest_bjobs_ids_query, job_id)
+                    continue
+                if query.processing:
+                    # this query is no longer mutable. try again.
+                    logging.debug("too late to add %r to %r", job_id, query)
+                    self._latest_bjobs_ids_query = None
+                    continue
+                if len(query.ids) > 150:
+                    # this query is full. try again.
+                    logging.debug("query %r full when trying to add %r", query, job_id)
+                    self._latest_bjobs_ids_query = None
+                    continue
+                logging.debug("successfully adding %r to query %r", job_id, query)
+                query.ids.add(job_id)
+                return self._unbatch_bjobs_by_id(job_id, await query.fut)
 
 
 # NB:
