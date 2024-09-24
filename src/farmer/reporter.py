@@ -1,13 +1,17 @@
 import asyncio
+import contextlib
+import enum
 import json
 import logging
 import os
 import re
 import subprocess
 import time
+from abc import abstractmethod, ABC
 from asyncio import CancelledError
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Sequence
+from typing import Any, Sequence, Literal
 
 import aiorun
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
@@ -38,6 +42,57 @@ def lsf_date_to_datetime(lsftime):
         return None
 
 
+@dataclass
+class BjobsQuery(ABC):
+    """Base class for bjobs queries.
+
+    If `lock` is populated, the worker task will take the lock and set
+    `processing` to True before doing anything else with the query. This
+    is intended to make it possible to safely update a query whilst it's
+    in the queue.
+
+    NB: this means that if you hold `lock` for an extended period,
+    processing of bjobs queries will stop until you release it!
+    """
+    lock: asyncio.Lock | None = field(default_factory=asyncio.Lock, init=False)
+    processing: bool = field(default=False, init=False)
+
+    @abstractmethod
+    def to_args(self) -> list[str]:
+        """Get a list of arguments to pass to bjobs."""
+        raise NotImplementedError
+
+
+@dataclass
+class BjobsQueryUser(BjobsQuery):
+    """Request bjobs output for a user."""
+    user: str
+    lock: None = field(default=None, init=False)
+
+    def to_args(self) -> list[str]:
+        assert self.user != "all", "bjobs treats the 'all' user specially"
+        return ["-u", self.user]
+
+
+@dataclass
+class BjobsQueryIds(BjobsQuery):
+    """Request bjobs output for a list of job IDs."""
+    ids: list[str]
+
+    def to_args(self) -> list[str]:
+        # LSF job IDs can be up to 10 digits long, so n jobs will take
+        # at most 11n - 1 bytes of argument space. If we allow ourselves
+        # 2001 bytes for job IDs, we arrive at a maximum of 182 job IDs
+        # per invocation.
+        #
+        # (POSIX specifies that at least 4096 bytes are available for
+        # arguments plus environment, but this is smaller than the
+        # environment variables alone on my system, so we can't usefully
+        # rely on that...)
+        assert 0 < len(self.ids) < 182
+        return self.ids
+
+
 class FarmerReporter:
     _bjobs_worker_instance = None
 
@@ -45,7 +100,7 @@ class FarmerReporter:
         self._cluster_name: str | None = None
         # permit at most this many simultaneous bjobs invocations
         self._bjobs_sem = asyncio.BoundedSemaphore(1)
-        self._bjobs_queue: asyncio.Queue[tuple[asyncio.Future, Sequence[str]]] = asyncio.Queue()
+        self._bjobs_queue: asyncio.Queue[tuple[asyncio.Future, BjobsQuery]] = asyncio.Queue()
         self._last_bjobs_call = time.monotonic_ns()
 
     async def start(self):
@@ -83,6 +138,7 @@ class FarmerReporter:
         usually not be called directly. (Otherwise, we could run bjobs
         so frequently that LSF is unable to service other requests.)
         """
+        logging.info("running bjobs %r", args)
         async with self._bjobs_sem:
             # copy the environment because we need the LSF variables to get bjobs info
             bjobs_env = os.environ.copy()
@@ -109,14 +165,18 @@ class FarmerReporter:
         so there should usually only be a single worker running.
         """
         while True:
-            fut, args = await self._bjobs_queue.get()
+            fut, query = await self._bjobs_queue.get()
+            logging.info("got query %r", query)
+            lock = query.lock or contextlib.nullcontext()
+            async with lock:
+                query.processing = True
             now = time.monotonic_ns()
             try:
                 waited = (now - self._last_bjobs_call) / 1e9
                 assert waited >= 0
                 if waited < BJOBS_MIN_INTERVAL:
                     await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
-                result = await self._bjobs(*args)
+                result = await self._bjobs(*query.to_args())
             except CancelledError:
                 fut.cancel()
                 raise
@@ -127,26 +187,26 @@ class FarmerReporter:
             finally:
                 self._bjobs_queue.task_done()
 
-    async def bjobs(self, *args: str) -> asyncio.Future:
+    async def bjobs(self, query: BjobsQuery) -> asyncio.Future:
         """Enqueue a bjobs command.
 
         The returned Future will resolve with the result of bjobs, or
         with an exception or cancellation as appropriate.
         """
         fut = asyncio.get_running_loop().create_future()
-        await self._bjobs_queue.put((fut, args))
+        await self._bjobs_queue.put((fut, query))
         return fut
 
     async def bjobs_for_user(self, user: str):
         """Get bjobs output for a user's currently-running jobs."""
         assert user != "all", "bjobs treats the 'all' user specially"
-        fut = await self.bjobs("-u", user)
+        fut = await self.bjobs(BjobsQueryUser(user))
         return await fut
 
     async def bjobs_by_id(self, job_id: str):
         """Get bjobs output for a job ID."""
         # TODO: batching
-        fut = await self.bjobs(job_id)
+        fut = await self.bjobs(BjobsQueryIds([job_id]))
         return await fut
 
 
