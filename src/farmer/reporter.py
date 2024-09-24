@@ -119,13 +119,13 @@ class FarmerReporter:
                 result = await self._bjobs(*args)
             except CancelledError:
                 fut.cancel()
-                self._bjobs_queue.task_done()
                 raise
             except Exception as e:
                 fut.set_exception(e)
             else:
                 fut.set_result(result)
-            self._bjobs_queue.task_done()
+            finally:
+                self._bjobs_queue.task_done()
 
     async def bjobs(self, *args: str) -> asyncio.Future:
         """Enqueue a bjobs command.
