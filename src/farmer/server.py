@@ -86,7 +86,8 @@ def make_job_blocks(job: dict) -> list[Block]:
 
 
 # real init of the slack app with bot token (add socket handler to be explicit?)
-slack_app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
+slack_bot = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
+slack_app_client = AsyncWebClient(os.environ.get("SLACK_APP_TOKEN"))
 
 
 async def dms_only(message):
@@ -98,7 +99,34 @@ async def dms_only(message):
     return message.get("channel_type") == "im"
 
 
-@slack_app.message("ping", [dms_only])
+async def received_by_bot(body):
+    """Filter for events received due to a bot authorization.
+
+    When a Slack app is installed, it can receive both its own events
+    (e.g. people sending messages to a bot user) and events relating to
+    the user who installed the app (e.g. direct messages sent to that
+    user). We want to ignore the latter case, so we only get events that
+    were received because our own bot user observed them.
+
+    This is a listener matcher, see the Slack Bolt docs:
+    <https://tools.slack.dev/bolt-python/concepts/listener-middleware>
+    """
+    # TODO: we should cache the result of this somewhere
+    #   (it's not an urgent problem, since Slack does not ratelimit
+    #   auth.test heavily, but still good practice)
+    ourself = await slack_bot.client.auth_test()
+    auths = body.get("authorizations")
+    # this list will contain at most one element
+    # https://api.slack.com/changelog/2020-09-15-events-api-truncate-authed-users
+    if isinstance(auths, list) and len(auths) == 1 and auths[0].get("user_id") == ourself["user_id"]:
+        return True
+    # we need to check whether we saw the event for multiple reasons...
+    # must use the app token for this API call
+    more_auths = await slack_app_client.apps_event_authorizations_list(event_context=body.get("event_context"))
+    return any(auth["user_id"] == ourself["user_id"] for auth in more_auths["authorizations"])
+
+
+@slack_bot.message("ping", [dms_only, received_by_bot])
 async def message_ping(ack, say):
     await ack()
     await say("hello! I am Farmer.")
@@ -107,7 +135,7 @@ async def message_ping(ack, say):
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
-@slack_app.message("jobs", [dms_only])
+@slack_bot.message("jobs", [dms_only, received_by_bot])
 async def message_jobs(message, say):
     logging.info(f"message {message}")
     # who's pinging?
@@ -135,7 +163,7 @@ async def message_jobs(message, say):
 
 # oh fancy you, wanna know more?
 # well here are the details for the job you asked for
-@slack_app.action("job_details")
+@slack_bot.action("job_details")
 async def handle_job_details(ack, body, logger, client):
     await ack()
     user = body["user"]["username"]
@@ -164,20 +192,20 @@ async def handle_job_details(ack, body, logger, client):
 
 # sending a message that we don't know?
 # tell them we don't know
-@slack_app.event("message", [dms_only])
+@slack_bot.event("message", [dms_only, received_by_bot])
 async def handle_message_events(body, logger):
     logger.warning("Unknown message")
     logger.warning(body)
     # add "wtf are you talkin about?" response
 
 
-@slack_app.event("message")
+@slack_bot.event("message")
 async def handle_other_message():
     # This handler is needed to silence warnings from slack-bolt.
     pass
 
 
-@slack_app.event("app_home_opened")
+@slack_bot.event("app_home_opened")
 async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
     user_id = event["user"]
     logger.info(f"handling app home open for {user_id}")
@@ -289,7 +317,7 @@ async def handle_job_complete_inner(j: dict):
 
 
 async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, exit_reason: str, name: str, command: str):
-    user = (await slack_app.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     match state:
         case "DONE":
             result = "has succeeded"
@@ -311,7 +339,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
         command_desc = "The command (truncated due to length) was:"
         command = "".join(commandlines[:6])
     footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
-    await slack_app.client.chat_postMessage(
+    await slack_bot.client.chat_postMessage(
         channel=user["id"],
         text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\n{command_desc} {command}. {footer}",
         blocks=[
@@ -363,7 +391,7 @@ def serve_uvicorn(server: uvicorn.Server):
 
 async def async_main():
     server = uvicorn.Server(uvicorn.Config(ws_app, host="0.0.0.0", port=8234, lifespan="off"))
-    slack = AsyncSocketModeHandler(slack_app, os.environ["SLACK_APP_TOKEN"])
+    slack = AsyncSocketModeHandler(slack_bot, os.environ["SLACK_APP_TOKEN"])
     # slack.start_async() would not properly dispose of resources on
     # exit, so we do it by hand...
     await slack.connect_async()
