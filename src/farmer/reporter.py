@@ -3,16 +3,22 @@ import json
 import logging
 import os
 import re
-import shlex
 import subprocess
+import time
+from asyncio import CancelledError
 from datetime import datetime
-from typing import Any
+from typing import Any, Sequence
 
 import aiorun
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
 
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
+
+
+# The minimum time between one bjobs invocation ending and the next
+# starting, in seconds.
+BJOBS_MIN_INTERVAL = 10
 
 
 # this is used to convert stupid LSF dates to python dates
@@ -33,10 +39,20 @@ def lsf_date_to_datetime(lsftime):
 
 
 class FarmerReporter:
+    _bjobs_worker_instance = None
+
     def __init__(self) -> None:
         self._cluster_name: str | None = None
         # permit at most this many simultaneous bjobs invocations
         self._bjobs_sem = asyncio.BoundedSemaphore(1)
+        self._bjobs_queue: asyncio.Queue[tuple[asyncio.Future, Sequence[str]]] = asyncio.Queue()
+        self._last_bjobs_call = time.monotonic_ns()
+
+    async def start(self):
+        self._bjobs_worker_instance = asyncio.create_task(self._bjobs_worker())
+
+    async def stop(self):
+        await self._bjobs_worker_instance
 
     async def get_cluster_name(self) -> str:
         """Gets the name of the current LSF cluster."""
@@ -63,9 +79,9 @@ class FarmerReporter:
     async def _bjobs(self, *args: str):
         """Run bjobs, returning the parsed JSON result.
 
-        Calls are rate limited in an attempt to avoid overwhelming LSF
-        with requests; if the rate limit is exceeded, calls will wait
-        their turn.
+        This function does not ratelimit bjobs invocations, so it should
+        usually not be called directly. (Otherwise, we could run bjobs
+        so frequently that LSF is unable to service other requests.)
         """
         async with self._bjobs_sem:
             # copy the environment because we need the LSF variables to get bjobs info
@@ -82,20 +98,56 @@ class FarmerReporter:
                 env=bjobs_env,
             )
             stdout, _ = await proc.communicate()
-            # TODO: ratelimit in a way that doesn't slow down callers
-            await asyncio.sleep(10)
+            self._last_bjobs_call = time.monotonic_ns()
         jobs = json.loads(stdout)
         return jobs
+
+    async def _bjobs_worker(self):
+        """Loop forever, handling bjobs requests.
+
+        This worker is responsible for ratelimiting bjobs invocations,
+        so there should usually only be a single worker running.
+        """
+        while True:
+            fut, args = await self._bjobs_queue.get()
+            now = time.monotonic_ns()
+            try:
+                waited = (now - self._last_bjobs_call) / 1e9
+                assert waited >= 0
+                if waited < BJOBS_MIN_INTERVAL:
+                    await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
+                result = await self._bjobs(*args)
+            except CancelledError:
+                fut.cancel()
+                self._bjobs_queue.task_done()
+                raise
+            except Exception as e:
+                fut.set_exception(e)
+            else:
+                fut.set_result(result)
+            self._bjobs_queue.task_done()
+
+    async def bjobs(self, *args: str) -> asyncio.Future:
+        """Enqueue a bjobs command.
+
+        The returned Future will resolve with the result of bjobs, or
+        with an exception or cancellation as appropriate.
+        """
+        fut = asyncio.get_running_loop().create_future()
+        await self._bjobs_queue.put((fut, args))
+        return fut
 
     async def bjobs_for_user(self, user: str):
         """Get bjobs output for a user's currently-running jobs."""
         assert user != "all", "bjobs treats the 'all' user specially"
-        return await self._bjobs("-u", user)
+        fut = await self.bjobs("-u", user)
+        return await fut
 
     async def bjobs_by_id(self, job_id: str):
         """Get bjobs output for a job ID."""
         # TODO: batching
-        return await self._bjobs(job_id)
+        fut = await self.bjobs(job_id)
+        return await fut
 
 
 # NB:
@@ -138,6 +190,7 @@ class FarmerReporterRpc(RpcMethodsBase):
 
 async def async_main():
     reporter = FarmerReporter()
+    await reporter.start()
     # TODO: retry logic?
     # (there should be some built into fastapi_websocket_rpc)
     disconnected = asyncio.Event()
@@ -149,6 +202,7 @@ async def async_main():
             on_disconnect=[on_disconnect],
     ):
         await disconnected.wait()
+    await reporter.stop()
     asyncio.get_event_loop().stop()
 
 
