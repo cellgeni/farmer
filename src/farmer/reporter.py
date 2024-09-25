@@ -95,7 +95,7 @@ class BjobsQueryIds(BjobsQuery):
 
 
 class FarmerReporter:
-    _bjobs_worker_instance = None
+    _bjobs_worker_instance: asyncio.Task | None = None
 
     def __init__(self) -> None:
         self._cluster_name: str | None = None
