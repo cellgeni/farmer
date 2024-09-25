@@ -241,7 +241,7 @@ class FarmerReporter:
                     continue
                 logging.debug("successfully adding %r to query %r", job_id, query)
                 query.ids.add(job_id)
-                return self._unbatch_bjobs_by_id(job_id, await query.fut)
+            return self._unbatch_bjobs_by_id(job_id, await query.fut)
 
 
 # NB:
