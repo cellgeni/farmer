@@ -98,7 +98,7 @@ class FarmerReporter:
     _bjobs_worker_instance: asyncio.Task | None = None
 
     def __init__(self) -> None:
-        self._cluster_name: str | None = None
+        self._cluster_name: str | asyncio.Future[str] | None = None
         # permit at most this many simultaneous bjobs invocations
         self._bjobs_sem = asyncio.BoundedSemaphore(1)
         self._bjobs_queue: asyncio.Queue[BjobsQuery] = asyncio.Queue()
@@ -113,25 +113,39 @@ class FarmerReporter:
 
     async def get_cluster_name(self) -> str:
         """Gets the name of the current LSF cluster."""
-        if self._cluster_name:
+        if isinstance(self._cluster_name, str):
+            # fast path
             return self._cluster_name
-        # We should really use pythonlsf, but IBM also do it this way:
-        # <https://github.com/IBMSpectrumComputing/lsf-utils/blob/fe9ba1ddf9897d9e36899c3b8d671cf7ea979bdf/bsubmit/bsubmit.cpp#L38>
-        proc = await asyncio.create_subprocess_exec(
-            "lsid",
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        assert proc.returncode == 0, proc.returncode
-        assert len(stderr) == 0, stderr
-        prefix = b"My cluster name is "
-        for line in stdout.splitlines():
-            if line.startswith(prefix):
-                self._cluster_name = line[len(prefix):].decode()
-                return self._cluster_name
-        assert False, f"lsid failed: {stdout}"
+        if asyncio.isfuture(self._cluster_name):
+            # another task is already doing the work
+            return await self._cluster_name
+        self._cluster_name = fut = asyncio.get_running_loop().create_future()
+        try:
+            # We should really use pythonlsf, but IBM also do it this way:
+            # <https://github.com/IBMSpectrumComputing/lsf-utils/blob/fe9ba1ddf9897d9e36899c3b8d671cf7ea979bdf/bsubmit/bsubmit.cpp#L38>
+            proc = await asyncio.create_subprocess_exec(
+                "lsid",
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            assert proc.returncode == 0, proc.returncode
+            assert len(stderr) == 0, stderr
+            prefix = b"My cluster name is "
+            for line in stdout.splitlines():
+                if line.startswith(prefix):
+                    self._cluster_name = line[len(prefix):].decode()
+                    fut.set_result(self._cluster_name)
+                    return self._cluster_name
+            assert False, f"lsid failed: {stdout}"
+        except Exception as e:
+            # try again next call
+            self._cluster_name = None
+            # fail any waiting tasks
+            fut.set_exception(e)
+            # fail ourselves
+            raise
 
     async def _bjobs(self, *args: str):
         """Run bjobs, returning the parsed JSON result.
