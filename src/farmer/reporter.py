@@ -24,6 +24,11 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(m
 # starting, in seconds.
 BJOBS_MIN_INTERVAL = 10
 
+# The minimum time to wait before trying again if `lsid` fails to tell
+# us the cluster name, in seconds. This should be extremely rare unless
+# there are problems with the cluster.
+LSID_BACKOFF = 30
+
 
 # this is used to convert stupid LSF dates to python dates
 DATE_REGEX = re.compile(
@@ -140,6 +145,9 @@ class FarmerReporter:
                     return self._cluster_name
             assert False, f"lsid failed: {stdout}"
         except Exception as e:
+            # prevent any further lsid calls for a bit, in case this is
+            # a transient problem that we could make worse by hammering
+            await asyncio.sleep(LSID_BACKOFF)
             # try again next call
             self._cluster_name = None
             # fail any waiting tasks
