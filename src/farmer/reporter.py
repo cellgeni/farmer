@@ -228,6 +228,7 @@ class FarmerReporter:
 
     def _unbatch_bjobs_by_id(self, job_id: str, data):
         """Undo the batching of bjobs_by_id results."""
+        data = data.copy()
         data["JOBS"] = 1
         # TODO: avoid O(n^2) behaviour from every task doing its own
         #   scan over all records
