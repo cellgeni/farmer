@@ -192,14 +192,14 @@ class FarmerReporter:
             query = await self._bjobs_queue.get()
             logging.info("got query %r", query)
             lock = query.lock or contextlib.nullcontext()
-            async with lock:
-                query.processing = True
-            now = time.monotonic_ns()
             try:
+                now = time.monotonic_ns()
                 waited = (now - self._last_bjobs_call) / 1e9
                 assert waited >= 0
                 if waited < BJOBS_MIN_INTERVAL:
                     await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
+                async with lock:
+                    query.processing = True
                 result = await self._bjobs(*query.to_args())
             except CancelledError:
                 query.fut.cancel()
