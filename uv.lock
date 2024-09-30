@@ -203,7 +203,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.10.5" },
     { name = "aiorun", specifier = ">=2024.8.1" },
     { name = "fastapi", specifier = ">=0.114.0" },
-    { name = "fastapi-websocket-rpc", specifier = ">=0.1.27" },
+    { name = "fastapi-websocket-rpc", git = "https://github.com/cellgeni/fastapi_websocket_rpc?branch=develop" },
     { name = "pydantic", specifier = ">=2.9.1" },
     { name = "slack-bolt", specifier = "==1.20.0" },
     { name = "uvicorn", specifier = ">=0.30.6" },
@@ -226,7 +226,7 @@ wheels = [
 [[package]]
 name = "fastapi-websocket-rpc"
 version = "0.1.27"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/cellgeni/fastapi_websocket_rpc?branch=develop#f7852c72aee8bc781416d010d1c753e81dc1b466" }
 dependencies = [
     { name = "fastapi" },
     { name = "packaging" },
@@ -235,10 +235,6 @@ dependencies = [
     { name = "uvicorn" },
     { name = "websocket-client" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7a/00/c25c985c5c28f485eefefeec3794c06cc095522608b6e5f98bd811c9ecda/fastapi_websocket_rpc-0.1.27.tar.gz", hash = "sha256:62463f0d6b42b9b3afde124e25dac51d5fd3ddc7cf59d7a49c5b9a5e87a36ab5", size = 20968 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/ef/129927e2a3df402fafcc0df4f5c5e6bbd1f22245bf4b07df68a170663642/fastapi_websocket_rpc-0.1.27-py3-none-any.whl", hash = "sha256:b3786cbb76128a22ec2ffde19cac263569fc507974f6651493b8548c4288cc63", size = 21591 },
 ]
 
 [[package]]

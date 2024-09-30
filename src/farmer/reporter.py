@@ -267,9 +267,7 @@ class FarmerReporter:
             return self._unbatch_bjobs_by_id(job_id, await query.fut)
 
 
-# NB:
-# - RPC calls may only use keyword arguments, so make the methods keyword-only for clarity
-# - return type annotations are mandatory
+# NB: RPC calls may only use keyword arguments, so make the methods keyword-only for clarity
 class FarmerReporterRpc(RpcMethodsBase):
     def __init__(self, reporter: FarmerReporter) -> None:
         super().__init__()
