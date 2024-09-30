@@ -169,8 +169,8 @@ async def handle_job_details(ack, body, logger, client):
     user = body["user"]["username"]
     job_id, array_index = body["actions"][0]["value"].split("|")
     logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
+    await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
     jobs = (await rm.reporter.get_job_details(job_id=job_id)).result
-    await client.chat_postMessage(channel=body["channel"]["id"], text=f"I hear you. You wanna know more about JOBID={job_id}")
     # just dump jobs, remove any keys without values, pretty print
     if len(jobs) == 1:
         job = jobs[0]
