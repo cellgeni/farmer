@@ -4,11 +4,17 @@ Slack bot that tells you the status of your LSF jobs
 
 ## Usage
 
+Farmer currently has two functions: listing pending/running jobs, and notifying you when your jobs finish.
+
+To see your pending/running jobs, send Farmer a message saying "jobs". (You can also see jobs for other users, e.g. by saying "jobs for cellgeni-su".)
+
 To be notified when jobs finish, you can use the included post-exec script:
 
 ```console
 $ bsub ... -Ep /path/to/farmer/src/post-exec.sh
 ```
+
+If you submit an array job with this post-exec script, you'll only be notified once every job in the array has finished.
 
 ## Preemptively Answered Questions
 
@@ -23,8 +29,8 @@ $ bsub ... -Ep /path/to/farmer/src/post-exec.sh
   ```
   
   Then add your jobs to the `notify` dependency group, using a command like `wr add --dep_grps notify`.
-  
-  Note that you only need to run the first command once – it will automatically notify you again if you add more commands with `--dep_grps notify` in the future.
+
+  (Note that you only need to run `wr add --deps notify` once – it will automatically run again if you add more commands with `--dep_grps notify` in the future.)
 
 ## Development
 
