@@ -233,6 +233,16 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
                 ]),
             ]),
         ]),
+        DividerBlock(),
+        RichTextBlock(elements=[
+            RichTextSectionElement(elements=[
+                RichTextElementParts.Text(text="NB: Farmer is in beta, and may at times be unreliable or even just broken. Please report any bugs to CellGenIT!"),
+            ]),
+            RichTextSectionElement(elements=[
+                RichTextElementParts.Text(text="Farmer is AGPLv3: "),
+                RichTextElementParts.Link(text="github.com/cellgeni/farmer", url="https://github.com/cellgeni/farmer")
+            ]),
+        ]),
     ]))
 
 
