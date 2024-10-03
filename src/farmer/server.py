@@ -335,8 +335,11 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
         case "EXIT":
             result = "has failed"
             result_emoji = "x"
+        case "RUN":
+            result = "should be done in a moment"
+            result_emoji = "hourglass_flowing_sand"
         case other:
-            result = f"is in state {other}"
+            result = f"reported itself as finished, but is in state {other}"
             result_emoji = "thinking_face"
     reason = f" (reason: {exit_reason!r})" if exit_reason else " "
     if len(command) <= 200:
