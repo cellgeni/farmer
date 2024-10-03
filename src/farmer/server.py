@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from datetime import timedelta
 
 import aiorun
 import uvicorn
@@ -323,10 +324,12 @@ async def handle_job_complete_inner(j: dict):
     assert username == "ah37", "would message the wrong person"
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
-    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
+    pend_sec = int(j["PEND_TIME"])
+    run_sec = int(j["RUN_TIME"].removesuffix(" second(s)"))
+    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, exit_reason: str, command: str):
+async def send_job_complete_message(*, username: str, job_id: str, cluster: str, queue: str, pend_sec: int, run_sec: int, state: str, exit_reason: str, command: str):
     user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     match state:
         case "DONE":
@@ -342,6 +345,9 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
             result = f"reported itself as finished, but is in state {other}"
             result_emoji = "thinking_face"
     reason = f" (reason: {exit_reason!r})" if exit_reason else " "
+    # formats like "1 day, 1:02:34"
+    pend_time = str(timedelta(seconds=pend_sec))
+    run_time = str(timedelta(seconds=run_sec))
     if len(command) <= 200:
         command_desc = "The command was:"
     else:
@@ -354,7 +360,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
     footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\n{command_desc} {command}. {footer}",
+        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\n{command_desc} {command}.\n{footer}",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -371,6 +377,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                     RichTextElementParts.Text(text=f" {result} "),
                     RichTextElementParts.Emoji(name=result_emoji),
                     RichTextElementParts.Text(text=reason),
+                    RichTextElementParts.Text(text=f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}."),
                     RichTextElementParts.Text(text=f"\n{command_desc}"),
                 ]),
                 RichTextPreformattedElement(elements=[
