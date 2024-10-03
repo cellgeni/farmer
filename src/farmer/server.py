@@ -55,22 +55,18 @@ def extract_username(message):
 def make_job_blocks(job: dict) -> list[Block]:
     # first part is the job id, queue and statues
     job_id = f"{job['JOBID']}[{job['JOBINDEX']}]" if job["JOBINDEX"] != "0" else job["JOBID"]
-    text = [f"JOBID={job_id} | STAT={job['STAT']} | QUEUE={job['QUEUE']}"]
+    text = [f"Job {job_id}: status {job['STAT']}, queue {job['QUEUE']}"]
     if job['STAT'] != "PEND":
-        text.append(f"EXEC_HOST={' '.join(set(job['EXEC_HOST'].split(':')))}")
+        text.append(f"Host(s): {' '.join(set(job['EXEC_HOST'].split(':')))}")
     # second part is when we add all the times submit, start, run
-    times = [f"SUBMIT_TIME={job['SUBMIT_TIME']}"]
+    text.append(f"Submitted {job['SUBMIT_TIME']}")
     if job["STAT"] == "RUN":
-        times.append(f"START_TIME={job['START_TIME']}")
-        runtime = int(job['RUN_TIME'].replace(" second(s)", "")) // 60
-        times.append(f"RUN_TIME={runtime}min")
-    text.append(" | ".join(times))
-    # then we add all the memory
-    mem = [f"MEMLIMIT={job['MEMLIMIT']}"]
+        text[-1] += f", started {job['START_TIME']}"
+        runtime = timedelta(seconds=int(job['RUN_TIME'].removesuffix(" second(s)")))
+        text.append(f"Running for {runtime}")
+    # then we talk about efficiency
     if job["STAT"] == "RUN":
-        mem.append(f"AVG_MEM={job['AVG_MEM']}")
-        mem.append(f"MEM_EFFICIENCY={job['MEM_EFFICIENCY']}")
-    text.append(" | ".join(mem).replace("bytes", ""))
+        text.append(f"Efficiency: {job['AVERAGE_CPU_EFFICIENCY']} (CPU), {job['MEM_EFFICIENCY']} of {job['MEMLIMIT']} (mem)")
     # here we should add all the CPU /GPU whatever else we need to show in the summary
     # keep it simple, this is supposed to be succinct, they can click for a job detail action later
     return [
