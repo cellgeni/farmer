@@ -308,6 +308,10 @@ async def handle_job_complete(notification: JobCompleteNotification):
             await handle_job_complete_inner(jobs[0])
         else:
             all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
+            # TODO: need to avoid potentially missing out on completed arrays
+            #   If the last member of an array is still in RUN state at the time we check it
+            #   (that is, almost but not quite finished with post-exec scripts),
+            #   then we could fail to notify about that array at all!
             if all_done:
                 await handle_job_complete_inner(jobs[0], count=len(jobs))
     finally:
