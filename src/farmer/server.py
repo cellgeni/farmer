@@ -323,10 +323,10 @@ async def handle_job_complete_inner(j: dict):
     assert username == "ah37", "would message the wrong person"
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
-    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], exit_reason=j["EXIT_REASON"], name=j["JOB_NAME"], command=j["COMMAND"])
+    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, exit_reason: str, name: str, command: str):
+async def send_job_complete_message(*, username: str, job_id: str, cluster: str, state: str, exit_reason: str, command: str):
     user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     match state:
         case "DONE":
