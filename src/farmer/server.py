@@ -28,6 +28,56 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(m
 # that the job has, in fact, finished.
 LSF_CLEANUP_GRACE_SECONDS = 20
 
+# Keys to omit from detailed job info.
+LSF_IGNORED_KEYS = {
+    "MIN_REQ_PROC",
+    "MAX_REQ_PROC",
+    "NREQ_SLOT",
+    "NALLOC_SLOT",
+    "CPU_PEAK",
+    "RUNTIMELIMIT",
+    "BLOCK",
+    "SWAP",
+    "EXCEPTION_STATUS",
+    "IDLE_FACTOR",
+    # Unused things:
+    "IMAGE",  # we don't use containers with LSF
+    "CONTAINER_NAME",
+    "EFFECTIVE_RESREQ",  # resource requirements are very verbose
+    "COMBINED_RESREQ",
+    "SRCJOBID",  # unused
+    "FROM_HOST",  # unused?
+    "CTXUSER",  # unused?
+    "ESUB",  # we don't use esub(?)
+    "JOB_PRIORITY",  # not used
+    "EXCLUSIVE",  # not used(?)
+    # Uninteresting things:
+    "PEND_TIME",  # we already show this
+    "FIRST_HOST",  # this is a subset of EXEC_HOSTS
+    "USER",  # the user knows who they are!
+    "INTERACTIVE",  # the user probably knows this
+    "ALLOC_SLOT",  # same as EXEC_HOSTS?
+    "USER_GROUP",  # typically uninteresting
+    "PROJ_NAME",  # same as USER_GROUP?
+    "LONGJOBID",  # same as job ID
+    "COMMAND",  # verbose
+    "CHARGED_SAAP",  # uninteresting
+    "NEXEC_HOST",  # uninteresting
+    "EXEC_CWD",
+    "EXEC_HOME",
+    "SUB_CWD",  # uninteresting?
+    "OUTPUT_FILE",  # uninteresting
+    "ERROR_FILE",  # uninteresting
+    "%COMPLETE",  # uninteresting
+    "PIDS",  # should be very rarely needed
+    "NTHREADS",
+    "RU_STIME",  # not usually interesting for running jobs
+    "RU_UTIME",
+    "CPU_USED",  # difficult to interpret
+    "MEM",  # we already have MAX_MEM and AVG_MEM
+    "TIME_LEFT",  # we already have FINISH_TIME
+}
+
 # When we handle the last job of a job array, we need to keep track of
 # its ID for a few moments so that we don't end up handling it again
 # (for example, if two jobs finish simultaneously).
@@ -171,19 +221,22 @@ async def handle_job_details(ack, body, logger, client):
     # just dump jobs, remove any keys without values, pretty print
     if len(jobs) == 1:
         job = jobs[0]
-        await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
-    elif array_index:
-        job = next(j for j in jobs if j["JOBINDEX"] == array_index)
-        await client.chat_postMessage(channel=body["channel"]["id"], text=json.dumps({k: v for k, v in job.items() if v}, indent=4) )
     else:
-        # currently this code is unused
-        # TODO: do we want to condense job arrays into a single list entry by default?
-        blocks = [
-            HeaderBlock(text=PlainTextObject(text=f"📝 Jobs in array {job_id} (only showing {min(len(jobs), 20)} of {len(jobs)})", emoji=True)),
-        ]
-        for job in jobs[:20]:
-            blocks.append(make_job_blocks(job))
-        await client.chat_postMessage(channel=body["channel"]["id"], blocks=blocks)
+        assert array_index
+        job = next(j for j in jobs if j["JOBINDEX"] == array_index)
+    text = "\n".join(f"{k}: {v}" for k, v in job.items() if (
+        bool(v) and v != "-"  # remove things with empty values
+        and k not in LSF_IGNORED_KEYS  # remove uninteresting keys
+    ))
+    await client.chat_postMessage(channel=body["channel"]["id"], text=text)
+        # # currently this code is unused
+        # # TODO: do we want to condense job arrays into a single list entry by default?
+        # blocks = [
+        #     HeaderBlock(text=PlainTextObject(text=f"📝 Jobs in array {job_id} (only showing {min(len(jobs), 20)} of {len(jobs)})", emoji=True)),
+        # ]
+        # for job in jobs[:20]:
+        #     blocks.append(make_job_blocks(job))
+        # await client.chat_postMessage(channel=body["channel"]["id"], blocks=blocks)
     # how about past jobs? well don't use bjobs we should go to elasticsearch and get you the past info
 
 
