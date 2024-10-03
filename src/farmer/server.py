@@ -326,10 +326,10 @@ async def handle_job_complete_inner(j: dict):
     cluster = (await rm.reporter.get_cluster_name()).result
     pend_sec = int(j["PEND_TIME"])
     run_sec = int(j["RUN_TIME"].removesuffix(" second(s)"))
-    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
+    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, cpu_eff=j["AVERAGE_CPU_EFFICIENCY"], mem_eff=j["MEM_EFFICIENCY"], state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, cluster: str, queue: str, pend_sec: int, run_sec: int, state: str, exit_reason: str, command: str):
+async def send_job_complete_message(*, username: str, job_id: str, cluster: str, queue: str, pend_sec: int, run_sec: int, cpu_eff: str, mem_eff: str, state: str, exit_reason: str, command: str):
     user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     match state:
         case "DONE":
@@ -360,7 +360,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
     footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\n{command_desc} {command}.\n{footer}",
+        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem).\n{command_desc} {command}.\n{footer}",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -378,6 +378,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                     RichTextElementParts.Emoji(name=result_emoji),
                     RichTextElementParts.Text(text=reason),
                     RichTextElementParts.Text(text=f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}."),
+                    RichTextElementParts.Text(text=f"\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)."),
                     RichTextElementParts.Text(text=f"\n{command_desc}"),
                 ]),
                 RichTextPreformattedElement(elements=[
