@@ -309,7 +309,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
         else:
             all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
             if all_done:
-                await handle_job_complete_inner(jobs[0])
+                await handle_job_complete_inner(jobs[0], count=len(jobs))
     finally:
         # TODO: rather than waiting for the remaining tasks to finish,
         #   we should keep track of and proactively cancel them
@@ -319,18 +319,19 @@ async def handle_job_complete(notification: JobCompleteNotification):
             RECENTLY_HANDLED_JOBS.remove(notification.job_id)
 
 
-async def handle_job_complete_inner(j: dict):
+async def handle_job_complete_inner(j: dict, count: int = 1):
     username = j["USER"]
     assert username == "ah37", "would message the wrong person"
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
     pend_sec = int(j["PEND_TIME"])
     run_sec = int(j["RUN_TIME"].removesuffix(" second(s)"))
-    await send_job_complete_message(username=username, job_id=job_id, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, cpu_eff=j["AVERAGE_CPU_EFFICIENCY"], mem_eff=j["MEM_EFFICIENCY"], state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
+    await send_job_complete_message(username=username, job_id=job_id, count=count, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, cpu_eff=j["AVERAGE_CPU_EFFICIENCY"], mem_eff=j["MEM_EFFICIENCY"], state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, cluster: str, queue: str, pend_sec: int, run_sec: int, cpu_eff: str, mem_eff: str, state: str, exit_reason: str, command: str):
+async def send_job_complete_message(*, username: str, job_id: str, count: int, cluster: str, queue: str, pend_sec: int, run_sec: int, cpu_eff: str, mem_eff: str, state: str, exit_reason: str, command: str):
     user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    array = f" (array length {count})" if count > 1 else ""
     match state:
         case "DONE":
             result = "has succeeded"
@@ -360,7 +361,9 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
     footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {job_id} on farm {cluster} {result} :{result_emoji}:{reason}\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem).\n{command_desc} {command}.\n{footer}",
+        text=f"Your job {job_id}{array} on farm {cluster} {result} :{result_emoji}:{reason}"
+             + (f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)." if count == 1 else "")
+             + f"\n{command_desc} {command}.\n{footer}",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -369,7 +372,7 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                         text=job_id,
                         style=RichTextElementParts.TextStyle(bold=True),
                     ),
-                    RichTextElementParts.Text(text=" on farm "),
+                    RichTextElementParts.Text(text=f"{array} on farm "),
                     RichTextElementParts.Text(
                         text=cluster,
                         style=RichTextElementParts.TextStyle(bold=True),
@@ -377,8 +380,11 @@ async def send_job_complete_message(*, username: str, job_id: str, cluster: str,
                     RichTextElementParts.Text(text=f" {result} "),
                     RichTextElementParts.Emoji(name=result_emoji),
                     RichTextElementParts.Text(text=reason),
-                    RichTextElementParts.Text(text=f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}."),
-                    RichTextElementParts.Text(text=f"\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)."),
+                    # TODO: show stats for job arrays
+                    *([
+                        RichTextElementParts.Text(text=f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}."),
+                        RichTextElementParts.Text(text=f"\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)."),
+                    ] if count == 1 else []),
                     RichTextElementParts.Text(text=f"\n{command_desc}"),
                 ]),
                 RichTextPreformattedElement(elements=[
