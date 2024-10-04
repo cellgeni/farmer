@@ -116,7 +116,7 @@ def make_job_blocks(job: dict) -> list[Block]:
         text.append(f"Running for {runtime}")
     # then we talk about efficiency
     if job["STAT"] == "RUN":
-        text.append(f"Efficiency: {job['AVERAGE_CPU_EFFICIENCY']} (CPU), {job['MEM_EFFICIENCY']} of {job['MEMLIMIT']} (mem)")
+        text.append(f"Efficiency: {job['AVERAGE_CPU_EFFICIENCY']} of {job['NALLOC_SLOT']} CPU, {job['MEM_EFFICIENCY']} of {job['MEMLIMIT']} mem")
     # here we should add all the CPU /GPU whatever else we need to show in the summary
     # keep it simple, this is supposed to be succinct, they can click for a job detail action later
     return [
