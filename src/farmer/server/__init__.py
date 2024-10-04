@@ -19,6 +19,9 @@ from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichT
 from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
+from farmer.server import messaging
+
+
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
@@ -116,7 +119,7 @@ def make_job_blocks(job: dict) -> list[Block]:
         text.append(f"Running for {runtime}")
     # then we talk about efficiency
     if job["STAT"] == "RUN":
-        text.append(f"Efficiency: {job['AVERAGE_CPU_EFFICIENCY']} of {job['NALLOC_SLOT']} CPU, {job['MEM_EFFICIENCY']} of {job['MEMLIMIT']} mem")
+        text.append(messaging.format_efficiency(job))
     # here we should add all the CPU /GPU whatever else we need to show in the summary
     # keep it simple, this is supposed to be succinct, they can click for a job detail action later
     return [
@@ -378,10 +381,10 @@ async def handle_job_complete_inner(j: dict, count: int = 1):
     cluster = (await rm.reporter.get_cluster_name()).result
     pend_sec = int(j["PEND_TIME"])
     run_sec = int(j["RUN_TIME"].removesuffix(" second(s)"))
-    await send_job_complete_message(username=username, job_id=job_id, count=count, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, cpu_eff=j["AVERAGE_CPU_EFFICIENCY"], mem_eff=j["MEM_EFFICIENCY"], state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
+    await send_job_complete_message(j, username=username, job_id=job_id, count=count, cluster=cluster, queue=j["QUEUE"], pend_sec=pend_sec, run_sec=run_sec, state=j["STAT"], exit_reason=j["EXIT_REASON"], command=j["COMMAND"])
 
 
-async def send_job_complete_message(*, username: str, job_id: str, count: int, cluster: str, queue: str, pend_sec: int, run_sec: int, cpu_eff: str, mem_eff: str, state: str, exit_reason: str, command: str):
+async def send_job_complete_message(job: dict, *, username: str, job_id: str, count: int, cluster: str, queue: str, pend_sec: int, run_sec: int, state: str, exit_reason: str, command: str):
     try:
         user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     except KeyError:
@@ -405,6 +408,7 @@ async def send_job_complete_message(*, username: str, job_id: str, count: int, c
     # formats like "1 day, 1:02:34"
     pend_time = str(timedelta(seconds=pend_sec))
     run_time = str(timedelta(seconds=run_sec))
+    efficiency = messaging.format_efficiency(job)
     if len(command) <= 200:
         command_desc = "The command was:"
     else:
@@ -418,7 +422,7 @@ async def send_job_complete_message(*, username: str, job_id: str, count: int, c
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
         text=f"Your job {job_id}{array} on farm {cluster} {result} :{result_emoji}:{reason}"
-             + (f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)." if count == 1 else "")
+             + (f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}.\n{efficiency}." if count == 1 else "")
              + f"\n{command_desc} {command}.\n{footer}",
         blocks=[
             RichTextBlock(elements=[
@@ -439,7 +443,7 @@ async def send_job_complete_message(*, username: str, job_id: str, count: int, c
                     # TODO: show stats for job arrays
                     *([
                         RichTextElementParts.Text(text=f"\nIt spent {pend_time} in queue {queue}, then finished in {run_time}."),
-                        RichTextElementParts.Text(text=f"\nEfficiency: {cpu_eff} (CPU), {mem_eff} (mem)."),
+                        RichTextElementParts.Text(text=f"\n{efficiency}."),
                     ] if count == 1 else []),
                     RichTextElementParts.Text(text=f"\n{command_desc}"),
                 ]),
