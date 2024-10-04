@@ -382,7 +382,11 @@ async def handle_job_complete_inner(j: dict, count: int = 1):
 
 
 async def send_job_complete_message(*, username: str, job_id: str, count: int, cluster: str, queue: str, pend_sec: int, run_sec: int, cpu_eff: str, mem_eff: str, state: str, exit_reason: str, command: str):
-    user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    try:
+        user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    except KeyError:
+        logging.error("could not infer Slack user from %r (job %r)", username, job_id)
+        return
     array = f" (array length {count})" if count > 1 else ""
     match state:
         case "DONE":
