@@ -173,7 +173,7 @@ async def received_by_bot(body):
     return any(auth["user_id"] == ourself["user_id"] for auth in more_auths["authorizations"])
 
 
-@slack_bot.message("ping", [dms_only, received_by_bot])
+@slack_bot.message("(?i)ping", [dms_only, received_by_bot])
 async def message_ping(ack, say):
     await ack()
     await say("hello! I am Farmer.")
@@ -182,7 +182,7 @@ async def message_ping(ack, say):
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
-@slack_bot.message("jobs", [dms_only, received_by_bot])
+@slack_bot.message("(?i)jobs", [dms_only, received_by_bot])
 async def message_jobs(message, say):
     logging.info(f"message {message}")
     # who's pinging?
