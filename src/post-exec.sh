@@ -9,7 +9,7 @@ result=$(
   curl -L --fail-with-body \
   -H "Content-Type: application/json" -H "Accept: application/json" \
   --data "$json" \
-  'http://farm22-cgi-01:8234/job-complete'
+  'http://farm22-cgi-01.internal.sanger.ac.uk:8234/job-complete'
 )
 exit=$?
 
