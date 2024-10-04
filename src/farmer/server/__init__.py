@@ -374,7 +374,6 @@ async def handle_job_complete(notification: JobCompleteNotification):
 
 async def handle_job_complete_inner(j: dict, count: int = 1):
     username = j["USER"]
-    assert username == "ah37", "would message the wrong person"
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
     pend_sec = int(j["PEND_TIME"])
