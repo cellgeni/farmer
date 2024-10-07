@@ -289,7 +289,7 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
         DividerBlock(),
         RichTextBlock(elements=[
             RichTextSectionElement(elements=[
-                RichTextElementParts.Text(text="NB: Farmer is in beta, and may at times be unreliable or even just broken. Please report any bugs to CellGenIT!"),
+                RichTextElementParts.Text(text="NB: Farmer is in beta, and may at times be unreliable or even just broken. Please report any bugs to CellGen Informatics!"),
             ]),
             RichTextSectionElement(elements=[
                 RichTextElementParts.Text(text="Farmer is AGPLv3: "),
@@ -419,7 +419,7 @@ async def send_job_complete_message(job: dict, *, username: str, job_id: str, co
     if len(commandlines := command.splitlines(keepends=True)) > 6:
         command_desc = "The command (truncated due to length) was:"
         command = "".join(commandlines[:6])
-    footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGenIT."
+    footer = "You're receiving this message because your job was configured to use Farmer's post-exec script. For any queries, contact CellGen Informatics."
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
         text=f"Your job {job_id}{array} on farm {cluster} {result} :{result_emoji}:{reason}"
