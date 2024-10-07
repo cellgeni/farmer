@@ -331,6 +331,7 @@ ws_endpoint.register_route(ws_app, "/internal/ws")
 class JobCompleteNotification(BaseModel):
     job_id: str
     array_index: str | None
+    user_override: str | None
 
 
 @ws_app.post("/job-complete")
@@ -357,7 +358,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
         jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
         assert jobs
         if len(jobs) == 1:
-            await handle_job_complete_inner(jobs[0])
+            await handle_job_complete_inner(jobs[0], user_override=notification.user_override)
         else:
             all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
             # TODO: need to avoid potentially missing out on completed arrays
@@ -365,7 +366,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
             #   (that is, almost but not quite finished with post-exec scripts),
             #   then we could fail to notify about that array at all!
             if all_done:
-                await handle_job_complete_inner(jobs[0], count=len(jobs))
+                await handle_job_complete_inner(jobs[0], count=len(jobs), user_override=notification.user_override)
     finally:
         # TODO: rather than waiting for the remaining tasks to finish,
         #   we should keep track of and proactively cancel them
@@ -375,8 +376,8 @@ async def handle_job_complete(notification: JobCompleteNotification):
             RECENTLY_HANDLED_JOBS.remove(notification.job_id)
 
 
-async def handle_job_complete_inner(j: dict, count: int = 1):
-    username = j["USER"]
+async def handle_job_complete_inner(j: dict, count: int = 1, user_override: str | None = None):
+    username = user_override or j["USER"]
     job_id = j["JOBID"]
     cluster = (await rm.reporter.get_cluster_name()).result
     pend_sec = int(j["PEND_TIME"])
