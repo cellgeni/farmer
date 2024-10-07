@@ -11,7 +11,13 @@ To see your pending/running jobs, send Farmer a message saying "jobs". (You can 
 To be notified when jobs finish, you can use the included post-exec script:
 
 ```console
-$ bsub ... -Ep /path/to/farmer/src/post-exec.sh
+$ bsub ... -Ep /software/cellgen/cellgeni/etc/notify-slack.sh
+```
+
+or as a bsub comment:
+
+```
+#BSUB -Ep /software/cellgen/cellgeni/etc/notify-slack.sh
 ```
 
 If you submit an array job with this post-exec script, you'll only be notified once every job in the array has finished.
@@ -20,12 +26,12 @@ If you submit an array job with this post-exec script, you'll only be notified o
 
 - **I don't use bsub, I use Nextflow** – Nextflow has built-in support for sending notifications when jobs finish. For example: `nextflow run -N you@email.example`
 
-- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/path/to/farmer/src/post-exec.sh"}, {"cleanup": true}]'`
+- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/software/cellgen/cellgeni/etc/notify-slack.sh"}, {"cleanup": true}]'`
 
   If you want to be notified only when a _group_ of wr jobs has completed, add a job to send the notification:
 
   ```console
-  $ echo /path/to/farmer/src/post-exec.sh | wr add --deps notify
+  $ echo /software/cellgen/cellgeni/etc/notify-slack.sh | wr add --deps notify
   ```
   
   Then add your jobs to the `notify` dependency group, using a command like `wr add --dep_grps notify`.
@@ -40,7 +46,7 @@ If you submit an array job with this post-exec script, you'll only be notified o
   Alternatively, you can pass a username straight to the post-exec script, by adding quotes (this overrides the environment variable, if set):
 
   ```console
-  $ bsub ... -Ep "/path/to/farmer/src/post-exec.sh zz0"
+  $ bsub ... -Ep "/software/cellgen/cellgeni/etc/notify-slack.sh zz0"
   ```
 
 ## Development
