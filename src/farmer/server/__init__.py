@@ -265,7 +265,7 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
     await ack()
     user = await client.users_info(user=user_id)
     await client.views_publish(user_id=user_id, view=View(type="home", blocks=[
-        HeaderBlock(text=PlainTextObject(text=f"Hello, @{user['user']['name']}!", emoji=False)),
+        HeaderBlock(text=PlainTextObject(text=f":farmer: Hello, @{user['user']['name']}!", emoji=True)),
         SectionBlock(text="Head to the “Messages” tab to interact with Farmer."),
         # TODO: can we include a button to take them there?
         # ButtonElement(text="Chat with Farmer", url="slack://app?team={}&id={}&tab=messages"),
