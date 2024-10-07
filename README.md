@@ -8,7 +8,7 @@ Farmer currently has two functions: listing pending/running jobs, and notifying 
 
 To see your pending/running jobs, send Farmer a message saying "jobs". (You can also see jobs for other users, e.g. by saying "jobs for cellgeni-su".)
 
-To be notified when jobs finish, you can use the included post-exec script:
+To be notified when jobs finish, you can use the [included post-exec script](./src/post-exec.sh):
 
 ```console
 $ bsub ... -Ep /software/cellgen/cellgeni/etc/notify-slack.sh
