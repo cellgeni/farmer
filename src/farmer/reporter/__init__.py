@@ -24,10 +24,18 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(m
 # starting, in seconds.
 BJOBS_MIN_INTERVAL = 10
 
+# The minimum time to wait before trying again if `bjobs` exits with a
+# nonzero exit code. This may indicate problems with the cluster.
+BJOBS_FAILURE_BACKOFF = 30
+
 # The minimum time to wait before trying again if `lsid` fails to tell
 # us the cluster name, in seconds. This should be extremely rare unless
 # there are problems with the cluster.
 LSID_BACKOFF = 30
+
+
+class BjobsError(Exception):
+    pass
 
 
 # this is used to convert stupid LSF dates to python dates
@@ -179,7 +187,12 @@ class FarmerReporter:
             )
             stdout, _ = await proc.communicate()
             self._last_bjobs_call = time.monotonic_ns()
-        jobs = json.loads(stdout)
+        if proc.returncode:
+            raise BjobsError(f"bjobs exited with {proc.returncode}")
+        try:
+            jobs = json.loads(stdout)
+        except json.JSONDecodeError as e:
+            raise BjobsError("bjobs produced invalid JSON") from e
         return jobs
 
     async def _bjobs_worker(self):
@@ -206,6 +219,7 @@ class FarmerReporter:
                 raise
             except Exception as e:
                 query.fut.set_exception(e)
+                await asyncio.sleep(BJOBS_FAILURE_BACKOFF)
             else:
                 query.fut.set_result(result)
             finally:
