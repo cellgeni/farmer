@@ -48,3 +48,17 @@ $ uv run farmer-server
 ```
 
 [uv]: https://docs.astral.sh/uv/
+
+## Structure
+
+Farmer has two components: the server and the reporter. The server talks to Slack, and handles both requests from users
+(asking about their jobs) and notifications of completed jobs (via HTTP request from an LSF post-execution script). The
+reporter provides an RPC interface for the server to get details of jobs.
+
+These are separated for several reasons:
+
+- keeping the reporter small makes it easier to audit: it's responsible for rate-limiting access to `bjobs`, and it's
+  important to be able to demonstrate that it does this correctly and securely
+- the reporter must run on the farm, whereas the server could run anywhere with internet access (e.g. a more isolated
+  area of the network)
+- in the future, there could be multiple reporters, one per farm
