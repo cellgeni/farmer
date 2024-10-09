@@ -1,5 +1,7 @@
 #!/bin/sh
 
+FARMER_SERVER_BASE_URL=http://farm22-cgi-01.internal.sanger.ac.uk:8234
+
 if [ $# -gt 0 ]; then
   export FARMER_SLACK_USER="$1"
 fi
@@ -17,7 +19,7 @@ result=$(
   curl -L --fail-with-body \
   -H "Content-Type: application/json" -H "Accept: application/json" \
   --data "$json" \
-  'http://farm22-cgi-01.internal.sanger.ac.uk:8234/job-complete'
+  "$FARMER_SERVER_BASE_URL/job-complete"
 )
 exit=$?
 

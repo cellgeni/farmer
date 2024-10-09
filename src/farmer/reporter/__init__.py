@@ -7,11 +7,13 @@ import os
 import re
 import subprocess
 import time
+import urllib.parse
 from abc import abstractmethod, ABC
 from asyncio import CancelledError
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence, Literal
+from urllib.parse import urlunparse
 
 import aiorun
 from dotenv import load_dotenv
@@ -326,8 +328,14 @@ async def async_main():
     disconnected = asyncio.Event()
     async def on_disconnect(channel):
         disconnected.set()
+    scheme, *rest = urllib.parse.urlparse(os.environ["FARMER_SERVER_BASE_URL"])
+    match scheme:
+        case "http":
+            scheme = "ws"
+        case "https":
+            scheme = "wss"
     async with WebSocketRpcClient(
-            "ws://localhost:8234/internal/ws",
+            urllib.parse.urljoin(urlunparse((scheme, *rest)), "/internal/ws"),
             FarmerReporterRpc(reporter),
             on_disconnect=[on_disconnect],
     ):

@@ -438,7 +438,7 @@ def serve_uvicorn(server: uvicorn.Server):
 
 
 async def async_main():
-    server = uvicorn.Server(uvicorn.Config(ws_app, host="0.0.0.0", port=8234, lifespan="off"))
+    server = uvicorn.Server(uvicorn.Config(ws_app, host="0.0.0.0", port=int(os.environ.get("PORT", 8234)), lifespan="off"))
     slack = AsyncSocketModeHandler(slack_bot, os.environ["SLACK_APP_TOKEN"])
     # slack.start_async() would not properly dispose of resources on
     # exit, so we do it by hand...

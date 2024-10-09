@@ -36,6 +36,30 @@ export SLACK_BOT_TOKEN=xoxb-...
 export SLACK_APP_TOKEN=xapp-1-...
 ```
 
+### Configuring connectivity
+
+Create a file `.env.reporter` containing the URL at which the server will be reachable:
+
+```shell
+export FARMER_SERVER_BASE_URL=http://localhost:8080
+```
+
+Additionally, set this URL at the top of `src/post-exec.sh` (careful not to commit this change – it may be easier to
+change the URL once the file is copied to a well-known location outside the git repository):
+
+```shell
+#!/bin/sh
+
+FARMER_SERVER_BASE_URL=http://localhost:8080
+```
+
+Add the port the server should run on to your `.env.server` (if you are doing port mapping, this may or may not match
+the URL configured above):
+
+```shell
+export PORT=8080
+```
+
 ### Running the app
 
 Now you can run the app:
