@@ -14,9 +14,11 @@ from datetime import datetime
 from typing import Any, Sequence, Literal
 
 import aiorun
+from dotenv import load_dotenv
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
 
 
+load_dotenv(".env.reporter")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 

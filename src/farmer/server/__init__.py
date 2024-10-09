@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import aiorun
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
 from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel
 from fastapi_websocket_rpc.rpc_channel import RpcCaller
@@ -20,8 +21,9 @@ from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
 from farmer.server import messaging
-from farmer.server.messaging import dms_only, received_by_bot
 
+
+load_dotenv(".env.server")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
@@ -87,13 +89,6 @@ LSF_IGNORED_KEYS = {
 RECENTLY_HANDLED_JOBS = set()
 
 
-# Shhhhhh: load credentials
-# !! please don't commit credentials.json !!
-for k, v in json.load(open("credentials.json", mode="rt")).items():
-    logging.info(f"Loading '{k}'")
-    os.environ[k] = v
-
-
 # stupidest way to get who you are asking jobs for "jobs for XXXX"
 # why people want to know others people's jobs I ask?
 # well service accounts for one, nosy people too?
@@ -138,9 +133,10 @@ def make_job_blocks(job: dict) -> list[Block]:
 # real init of the slack app with bot token (add socket handler to be explicit?)
 slack_bot = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 slack_app_client = AsyncWebClient(os.environ.get("SLACK_APP_TOKEN"))
+matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 
 
-@slack_bot.message("(?i)ping", [dms_only, received_by_bot])
+@slack_bot.message("(?i)ping", [matchers.dms_only, matchers.received_by_bot])
 async def message_ping(ack, say):
     await ack()
     await say("hello! I am Farmer.")
@@ -149,7 +145,7 @@ async def message_ping(ack, say):
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
-@slack_bot.message("(?i)jobs", [dms_only, received_by_bot])
+@slack_bot.message("(?i)jobs", [matchers.dms_only, matchers.received_by_bot])
 async def message_jobs(message, say):
     logging.info(f"message {message}")
     # who's pinging?
@@ -209,7 +205,7 @@ async def handle_job_details(ack, body, logger, client):
 
 # sending a message that we don't know?
 # tell them we don't know
-@slack_bot.event("message", [dms_only, received_by_bot])
+@slack_bot.event("message", [matchers.dms_only, matchers.received_by_bot])
 async def handle_message_events(body, logger):
     logger.warning("Unknown message")
     logger.warning(body)
