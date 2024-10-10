@@ -26,9 +26,9 @@ If you submit an array job with this post-exec script, you'll only be notified o
 
 - **I don't use bsub, I use Nextflow** – Nextflow has built-in support for sending notifications when jobs finish. For example: `nextflow run -N you@email.example`
 
-- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/software/cellgen/cellgeni/etc/notify-slack.sh --user=zz0 --label='some descriptive label'"}, {"cleanup": true}]'`, replacing the username and job label as appropriate.
+- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/software/cellgen/cellgeni/etc/notify-slack.sh --user=zz0 --label=\"some descriptive label\""}, {"cleanup": true}]'`, replacing the username and job label as appropriate.
 
-  If you want to be notified only when a _group_ of wr jobs has completed, add a job to send the notification:
+  If you want to be notified only when a _group_ of wr jobs has completed, add a job to send the notification (it will run once immediately):
 
   ```console
   $ echo "/software/cellgen/cellgeni/etc/notify-slack.sh --user=zz0 --label='some descriptive label'" | wr add --deps notify
