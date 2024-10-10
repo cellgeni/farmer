@@ -289,9 +289,10 @@ ws_endpoint.register_route(ws_app, "/internal/ws")
 
 
 class JobCompleteNotification(BaseModel):
-    job_id: str
+    job_id: str | None
     array_index: str | None
     user_override: str | None
+    label: str | None
 
 
 @ws_app.post("/job-complete")
@@ -305,6 +306,12 @@ async def handle_job_complete(notification: JobCompleteNotification):
     # TODO: we should probably check that the job actually used the
     #   post-exec script (to avoid providing an unauthenticated vector
     #   to send confusing messages to the owners of arbitrary jobs)
+    if not notification.job_id:
+        if not notification.user_override:
+            logging.error("received notification with neither ID nor user: %r", notification)
+            return
+        await send_job_complete_message_simple(username=notification.user_override, label=notification.label)
+        return
     # When we're notified, the job will still be in RUN state. So we
     # need to wait a bit for things to quiesce (post-exec scripts, LSF
     # bookkeeping, ...) before we ask what the state of the job is.
@@ -410,6 +417,35 @@ async def send_job_complete_message(job: dict, *, username: str, job_id: str, co
                 ]),
                 RichTextPreformattedElement(elements=[
                     RichTextElementParts.Text(text=command),
+                ]),
+            ]),
+            ContextBlock(elements=[
+                PlainTextObject(text=footer, emoji=False),
+            ]),
+        ],
+    )
+
+
+async def send_job_complete_message_simple(username: str, label: str | None):
+    try:
+        user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
+    except KeyError:
+        logging.error("could not infer Slack user from %r (label %r)", username, label)
+        return
+    label = label or "(no label provided)"
+    footer = "You're receiving this message because you used Farmer's notification hook. For any queries, contact CellGen Informatics."
+    await slack_bot.client.chat_postMessage(
+        channel=user["id"],
+        text=f"Your job {label} has finished. Since it wasn't submitted via LSF, no details are available.\n{footer}",
+        blocks=[
+            RichTextBlock(elements=[
+                RichTextSectionElement(elements=[
+                    RichTextElementParts.Text(text="Your job "),
+                    RichTextElementParts.Text(
+                        text=label,
+                        style=RichTextElementParts.TextStyle(bold=True),
+                    ),
+                    RichTextElementParts.Text(text=" has finished. Since it wasn't submitted via LSF, no details are available."),
                 ]),
             ]),
             ContextBlock(elements=[
