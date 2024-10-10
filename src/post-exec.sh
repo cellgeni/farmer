@@ -2,9 +2,66 @@
 
 FARMER_SERVER_BASE_URL=http://farm22-cgi-01.internal.sanger.ac.uk:8234
 
-if [ $# -gt 0 ]; then
-  export FARMER_SLACK_USER="$1"
-fi
+# Usage: post-exec.sh [--user=USER] [--] [USER]
+#
+# Options:
+#   --user=USER: a user to notify (if unspecified, use job owner)
+# Positional arguments:
+#   USER: a user to notify (if unspecified, use job owner)
+
+export FARMER_WARNINGS=
+warn() {
+  printf 'warning: %s\n' "$1"
+  FARMER_WARNINGS="$FARMER_WARNINGS${FARMER_WARNINGS:+; }$1"
+}
+
+pos=0
+handle_positional() {
+  : "$(( pos = pos + 1 ))"
+  case $pos in
+    1)
+      export FARMER_SLACK_USER="$1"
+      ;;
+    *)
+      warn "unrecognised positional argument: $1"
+      ;;
+  esac
+}
+
+# handle positional arguments and options
+while [ $# -gt 0 ]; do
+  arg=$1
+  shift
+  case $arg in
+    --user)
+      if [ $# -gt 0 ]; then
+        param=$1
+        shift
+        export FARMER_SLACK_USER="$param"
+      else
+        warn "missing parameter for $arg"
+      fi
+      ;;
+    --user=*)
+      export FARMER_SLACK_USER="${arg#--user=}"
+      ;;
+    --)
+      break
+      ;;
+    -*)
+      warn "unrecognised option: ${arg#*=}"
+      ;;
+    *)
+      handle_positional "$arg"
+      ;;
+  esac
+done
+# handle positional arguments only
+while [ $# -gt 0 ]; do
+  arg=$1
+  shift
+  handle_positional "$arg"
+done
 
 you=$FARMER_SLACK_USER
 if [ -z "$you" ]; then
