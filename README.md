@@ -26,17 +26,18 @@ If you submit an array job with this post-exec script, you'll only be notified o
 
 - **I don't use bsub, I use Nextflow** – Nextflow has built-in support for sending notifications when jobs finish. For example: `nextflow run -N you@email.example`
 
-- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit '[{"run": "/software/cellgen/cellgeni/etc/notify-slack.sh --user=zz0 --label=\"some descriptive label\""}, {"cleanup": true}]'`, replacing the username and job label as appropriate.
+- **I don't use bsub, I use wr** – when adding a command to wr, use a command line like: `wr add --on_exit "[{\"run\": \"/software/cellgen/cellgeni/etc/notify-slack.sh --user=$USER --label='wr job'\"}, {\"cleanup\": true}]"`, replacing the job label as appropriate.
 
   If you want to be notified only when a _group_ of wr jobs has completed, add a job to send the notification (it will run once immediately):
 
   ```console
-  $ echo "/software/cellgen/cellgeni/etc/notify-slack.sh --user=zz0 --label='some descriptive label'" | wr add --deps notify
+  $ echo "/software/cellgen/cellgeni/etc/notify-slack.sh --user=$USER --label='wr jobs'" | wr add --deps notify
   ```
 
   Then add your jobs to the `notify` dependency group, using a command like `wr add --dep_grps notify`.
+  Note that you only need to run `wr add --deps notify` once – it will automatically notify you again if you add more commands with `--dep_grps notify` in the future.
 
-  (Note that you only need to run `wr add --deps notify` once – it will automatically run again if you add more commands with `--dep_grps notify` in the future.)
+  (Remember to replace `$USER` in the above commands with your own username, if you're using a service account.)
 
 - **I run jobs using a service account/I need Slack notifications to go to someone else** – by default, Farmer tries to find a Slack account belonging to the job's owner, but you can override this heuristic in two ways.
 
