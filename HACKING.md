@@ -84,3 +84,8 @@ These are separated for several reasons:
 - the reporter must run on the farm, whereas the server could run anywhere with internet access (e.g. a more isolated
   area of the network)
 - in the future, there could be multiple reporters, one per farm
+
+## Avoiding notifications to the wrong users
+
+During development, you can set the environment variable `FARMER_DEV_USER` to your username. Then, Farmer will refuse to
+notify any user (and log an error) except that named user.

@@ -20,6 +20,7 @@ from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichT
 from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
+from farmer.common import is_dev_mode, get_dev_user
 from farmer.server import messaging
 
 
@@ -139,7 +140,14 @@ matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 @slack_bot.message("(?i)ping", [matchers.dms_only, matchers.received_by_bot])
 async def message_ping(ack, say):
     await ack()
-    await say("hello! I am Farmer.")
+    ourself = await slack_bot.client.auth_test()
+    bot_id = ourself["bot_id"]
+    team_id = ourself["team_id"]
+    profile = await slack_bot.client.bots_info(bot=bot_id, team_id=team_id)
+    name = profile["bot"]["name"]
+    await say(f"hello! I am {name}.")
+    if dev_user := get_dev_user():
+        await say(f":warning: Running in dev mode for user {dev_user}.")
     cluster = (await rm.reporter.get_cluster_name()).result
     await say(f"I am running on cluster {cluster!r}.")
 
@@ -229,6 +237,9 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
         SectionBlock(text="Head to the “Messages” tab to interact with Farmer."),
         # TODO: can we include a button to take them there?
         # ButtonElement(text="Chat with Farmer", url="slack://app?team={}&id={}&tab=messages"),
+        *([
+            SectionBlock(text=PlainTextObject(text=f":warning: This Farmer instance is running in dev mode for user {get_dev_user()} :warning:", emoji=True)),
+        ] if is_dev_mode() else []),
         RichTextBlock(elements=[
             RichTextSectionElement(elements=[
                 RichTextElementParts.Text(text="Farmer understands the following commands:"),
@@ -353,6 +364,9 @@ async def handle_job_complete_inner(j: dict, count: int = 1, user_override: str 
 
 
 async def send_job_complete_message(job: dict, *, username: str, job_id: str, count: int, cluster: str, queue: str, pend_sec: int, run_sec: int, state: str, exit_reason: str, command: str):
+    if is_dev_mode() and username != (dev_user := get_dev_user()):
+        logging.error("refusing to notify other user %r in dev mode for user %r", username, dev_user)
+        return
     try:
         user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     except KeyError:
@@ -427,6 +441,9 @@ async def send_job_complete_message(job: dict, *, username: str, job_id: str, co
 
 
 async def send_job_complete_message_simple(username: str, label: str | None):
+    if is_dev_mode() and username != (dev_user := get_dev_user()):
+        logging.error("refusing to notify other user %r in dev mode for user %r", username, dev_user)
+        return
     try:
         user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
     except KeyError:
