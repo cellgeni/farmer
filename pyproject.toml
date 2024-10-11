@@ -1,6 +1,6 @@
 [project]
 name = "farmer"
-version = "0.1.0"
+version = "24.285"
 description = "Slack bot that tells you the status of your LSF jobs"
 readme = "README.md"
 requires-python = ">=3.10"
