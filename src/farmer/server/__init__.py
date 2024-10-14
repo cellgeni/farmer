@@ -4,6 +4,8 @@ import logging
 import os
 import re
 from datetime import timedelta
+from typing import Self
+
 try:
     from asyncio import Barrier
 except ImportError:  # introduced in Python 3.11
@@ -15,7 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
 from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel
 from fastapi_websocket_rpc.rpc_channel import RpcCaller
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichTextElementParts, \
@@ -304,6 +306,12 @@ class JobCompleteNotification(BaseModel):
     user_override: str | None
     label: str | None
 
+    @model_validator(mode="after")
+    def validate(self) -> Self:
+        if not self.job_id and not self.user_override:
+            raise ValueError("at least one of job_id and user_override must be provided")
+        return self
+
 
 @ws_app.post("/job-complete")
 async def job_complete(notification: JobCompleteNotification, bg: BackgroundTasks):
@@ -337,9 +345,6 @@ async def handle_job_complete(notification: JobCompleteNotification):
     #   post-exec script (to avoid providing an unauthenticated vector
     #   to send confusing messages to the owners of arbitrary jobs)
     if not notification.job_id:
-        if not notification.user_override:
-            logging.error("received notification with neither ID nor user: %r", notification)
-            return
         await send_job_complete_message_simple(username=notification.user_override, label=notification.label)
         return
     # When we're notified, the job will still be in RUN state. So we
