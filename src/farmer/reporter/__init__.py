@@ -126,7 +126,8 @@ class FarmerReporter:
         self._bjobs_worker_instance = asyncio.create_task(self._bjobs_worker())
 
     async def stop(self):
-        await self._bjobs_worker_instance
+        self._bjobs_worker_instance.cancel()
+        await asyncio.gather(self._bjobs_worker_instance, return_exceptions=True)
 
     async def get_cluster_name(self) -> str:
         """Gets the name of the current LSF cluster."""
