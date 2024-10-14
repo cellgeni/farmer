@@ -84,11 +84,6 @@ LSF_IGNORED_KEYS = {
     "TIME_LEFT",  # we already have FINISH_TIME
 }
 
-# When we handle the last job of a job array, we need to keep track of
-# its ID for a few moments so that we don't end up handling it again
-# (for example, if two jobs finish simultaneously).
-RECENTLY_HANDLED_JOBS = set()
-
 
 # stupidest way to get who you are asking jobs for "jobs for XXXX"
 # why people want to know others people's jobs I ask?
@@ -313,6 +308,26 @@ async def job_complete(notification: JobCompleteNotification, bg: BackgroundTask
     bg.add_task(handle_job_complete, notification)
 
 
+BARRIERS: dict[str, asyncio.Barrier] = {}
+
+
+async def get_job_barrier(job_id: str, count: int) -> asyncio.Barrier:
+    """Get a barrier for the given job.
+
+    The barrier will block until one party is waiting for each item in
+    the job array (or a single party, in the case of a standalone job).
+    """
+    barrier = BARRIERS.get(job_id)
+    if barrier is None:
+        BARRIERS[job_id] = barrier = asyncio.Barrier(count)
+    # TODO: consider a more robust guard against job ID reuse
+    if barrier.parties != count:
+        logging.warning("stale barrier %r for job %r (expected %d, got %d)", barrier, job_id, count, barrier.parties)
+        await barrier.abort()
+        BARRIERS[job_id] = barrier = asyncio.Barrier(count)
+    return barrier
+
+
 async def handle_job_complete(notification: JobCompleteNotification):
     # TODO: we should probably check that the job actually used the
     #   post-exec script (to avoid providing an unauthenticated vector
@@ -325,33 +340,38 @@ async def handle_job_complete(notification: JobCompleteNotification):
         return
     # When we're notified, the job will still be in RUN state. So we
     # need to wait a bit for things to quiesce (post-exec scripts, LSF
-    # bookkeeping, ...) before we ask what the state of the job is.
-    # TODO: if the job is still in RUN state, should we wait longer?
+    # bookkeeping, ...) before we ask it what the state of the job is.
+    # (LSF may take longer than this, in which case we will continue to
+    # wait, but we expect it to always take at least this long, so
+    # there's no point asking sooner.)
     await asyncio.sleep(LSF_CLEANUP_GRACE_SECONDS)
-    if notification.job_id in RECENTLY_HANDLED_JOBS:
-        logging.debug("skipping job %r, already handled", notification.job_id)
-        return
-    try:
-        RECENTLY_HANDLED_JOBS.add(notification.job_id)
+    jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
+    assert jobs
+    count = len(jobs)
+    index = notification.array_index or "0"
+    barrier = await get_job_barrier(notification.job_id, count)
+    # wait for our job to finish
+    while not barrier.broken:
+        job = next(j for j in jobs if j["JOBINDEX"] == index)  # TODO: inefficient
+        if job["STAT"] in {"DONE", "EXIT"}:
+            break
+        # this request will be automatically ratelimited and batched
+        # TODO: but only on the other end of the RPC link...
         jobs = (await rm.reporter.get_job_details(job_id=notification.job_id)).result
-        assert jobs
-        if len(jobs) == 1:
-            await handle_job_complete_inner(jobs[0], user_override=notification.user_override)
-        else:
-            all_done = all(j["STAT"] in {"DONE", "EXIT"} for j in jobs)
-            # TODO: need to avoid potentially missing out on completed arrays
-            #   If the last member of an array is still in RUN state at the time we check it
-            #   (that is, almost but not quite finished with post-exec scripts),
-            #   then we could fail to notify about that array at all!
-            if all_done:
-                await handle_job_complete_inner(jobs[0], count=len(jobs), user_override=notification.user_override)
-    finally:
-        # TODO: rather than waiting for the remaining tasks to finish,
-        #   we should keep track of and proactively cancel them
-        try:
-            await asyncio.sleep(LSF_CLEANUP_GRACE_SECONDS * 2)
-        finally:
-            RECENTLY_HANDLED_JOBS.remove(notification.job_id)
+    else:
+        logging.error("broken barrier %r while handling notification %r", barrier, notification)
+        return
+    # wait for any other jobs in the same array to finish
+    async with barrier as position:
+        # only one notification per job ID!
+        if position == 0:
+            # this is probably safe, if we assume that we'll get here
+            # *reasonably* promptly after the job is done...
+            if barrier == BARRIERS[notification.job_id]:
+                del BARRIERS[notification.job_id]
+            else:
+                logging.warning("fast job ID reuse? barrier %r replaced by %r (notification %r)", barrier, BARRIERS[notification.job_id], notification)
+            await handle_job_complete_inner(job, count=count, user_override=notification.user_override)
 
 
 async def handle_job_complete_inner(j: dict, count: int = 1, user_override: str | None = None):
