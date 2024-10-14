@@ -4,6 +4,10 @@ import logging
 import os
 import re
 from datetime import timedelta
+try:
+    from asyncio import Barrier
+except ImportError:  # introduced in Python 3.11
+    from farmer.common.barrier import Barrier
 
 import aiorun
 import uvicorn
@@ -308,10 +312,10 @@ async def job_complete(notification: JobCompleteNotification, bg: BackgroundTask
     bg.add_task(handle_job_complete, notification)
 
 
-BARRIERS: dict[str, asyncio.Barrier] = {}
+BARRIERS: dict[str, Barrier] = {}
 
 
-async def get_job_barrier(job_id: str, count: int) -> asyncio.Barrier:
+async def get_job_barrier(job_id: str, count: int) -> Barrier:
     """Get a barrier for the given job.
 
     The barrier will block until one party is waiting for each item in
@@ -319,12 +323,12 @@ async def get_job_barrier(job_id: str, count: int) -> asyncio.Barrier:
     """
     barrier = BARRIERS.get(job_id)
     if barrier is None:
-        BARRIERS[job_id] = barrier = asyncio.Barrier(count)
+        BARRIERS[job_id] = barrier = Barrier(count)
     # TODO: consider a more robust guard against job ID reuse
     if barrier.parties != count:
         logging.warning("stale barrier %r for job %r (expected %d, got %d)", barrier, job_id, count, barrier.parties)
         await barrier.abort()
-        BARRIERS[job_id] = barrier = asyncio.Barrier(count)
+        BARRIERS[job_id] = barrier = Barrier(count)
     return barrier
 
 
