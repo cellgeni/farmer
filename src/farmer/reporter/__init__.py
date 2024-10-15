@@ -322,29 +322,27 @@ class FarmerReporterRpc(RpcMethodsBase):
 
 
 async def async_main():
-    try:
-        reporter = FarmerReporter()
-        await reporter.start()
-        # TODO: retry logic?
-        # (there should be some built into fastapi_websocket_rpc)
-        disconnected = asyncio.Event()
-        async def on_disconnect(channel):
-            disconnected.set()
-        scheme, *rest = urllib.parse.urlparse(os.environ["FARMER_SERVER_BASE_URL"])
-        match scheme:
-            case "http":
-                scheme = "ws"
-            case "https":
-                scheme = "wss"
-        async with WebSocketRpcClient(
-                urllib.parse.urljoin(urlunparse((scheme, *rest)), "/internal/ws"),
-                FarmerReporterRpc(reporter),
-                on_disconnect=[on_disconnect],
-        ):
-            await disconnected.wait()
-        await reporter.stop()
-    finally:
-        asyncio.get_running_loop().stop()
+    reporter = FarmerReporter()
+    await reporter.start()
+    # TODO: retry logic?
+    # (there should be some built into fastapi_websocket_rpc)
+    disconnected = asyncio.Event()
+    async def on_disconnect(channel):
+        disconnected.set()
+    scheme, *rest = urllib.parse.urlparse(os.environ["FARMER_SERVER_BASE_URL"])
+    match scheme:
+        case "http":
+            scheme = "ws"
+        case "https":
+            scheme = "wss"
+    async with WebSocketRpcClient(
+            urllib.parse.urljoin(urlunparse((scheme, *rest)), "/internal/ws"),
+            FarmerReporterRpc(reporter),
+            on_disconnect=[on_disconnect],
+    ):
+        await disconnected.wait()
+    await reporter.stop()
+    asyncio.get_running_loop().stop()
 
 
 def main():
