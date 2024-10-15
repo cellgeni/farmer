@@ -4,12 +4,6 @@ import logging
 import os
 import re
 from datetime import timedelta
-from typing import Self
-
-try:
-    from asyncio import Barrier
-except ImportError:  # introduced in Python 3.11
-    from farmer.common.barrier import Barrier
 
 import aiorun
 import uvicorn
@@ -25,9 +19,15 @@ from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichT
     ButtonElement, DividerBlock, Block, RichTextListElement
 from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
+from typing_extensions import Self
 
 from farmer.common import is_dev_mode, get_dev_user
 from farmer.server import messaging
+
+try:
+    from asyncio import Barrier
+except ImportError:  # introduced in Python 3.11
+    from farmer.common.barrier import Barrier
 
 
 load_dotenv(".env.server")
