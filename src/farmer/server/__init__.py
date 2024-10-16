@@ -14,6 +14,7 @@ from fastapi_websocket_rpc.rpc_channel import RpcCaller
 from pydantic import BaseModel, model_validator
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_sdk.errors import SlackApiError
 from slack_sdk.models.blocks import RichTextBlock, RichTextSectionElement, RichTextElementParts, \
     RichTextPreformattedElement, ContextBlock, PlainTextObject, HeaderBlock, MarkdownTextObject, SectionBlock, \
     ButtonElement, DividerBlock, Block, RichTextListElement
@@ -162,6 +163,7 @@ async def message_jobs(message, say):
     logging.info(f"recieved text '{rx}'")
     user = extract_username(rx)
     if not user:
+        # TODO: apparently `user_profile` can sometimes not be present (then should query `user` ID)
         user = message["user_profile"]["name"]
     # get jobs for user and say it back to them
     jobs = (await rm.reporter.get_jobs(user=user)).result
@@ -398,8 +400,8 @@ async def send_job_complete_message(job: dict, *, username: str, job_id: str, co
         return
     try:
         user = (await slack_bot.client.users_lookupByEmail(email=username + "@sanger.ac.uk"))["user"]
-    except KeyError:
-        logging.error("could not infer Slack user from %r (job %r)", username, job_id)
+    except SlackApiError:
+        logging.exception("could not infer Slack user from %r (job %r)", username, job_id)
         return
     array = f" (array length {count})" if count > 1 else ""
     match state:
