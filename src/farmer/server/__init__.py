@@ -156,15 +156,18 @@ async def message_ping(ack, say):
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
 @slack_bot.message("(?i)jobs", [matchers.dms_only, matchers.received_by_bot])
-async def message_jobs(message, say):
+async def message_jobs(message, say, client):
     logging.info(f"message {message}")
     # who's pinging?
     rx = message["blocks"][0]["elements"][0]["elements"][0]["text"]
     logging.info(f"recieved text '{rx}'")
     user = extract_username(rx)
     if not user:
-        # TODO: apparently `user_profile` can sometimes not be present (then should query `user` ID)
-        user = message["user_profile"]["name"]
+        try:
+            user = message["user_profile"]["name"]
+        except KeyError:
+            # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
+            user = (await client.users_info(user=message["user"]))["user"]["name"]
     # get jobs for user and say it back to them
     jobs = (await rm.reporter.get_jobs(user=user)).result
     # build response blocks
