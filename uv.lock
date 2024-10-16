@@ -186,7 +186,7 @@ wheels = [
 
 [[package]]
 name = "farmer"
-version = "24.285"
+version = "24.290"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
