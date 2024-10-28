@@ -85,7 +85,7 @@ echo "sending $you a notification that your job finished..."
 json=$(jq -nc '{job_id: $ENV.LSB_JOBID, array_index: $ENV.LSB_JOBINDEX, user_override: $ENV.FARMER_SLACK_USER, label: $ENV.FARMER_LABEL}')
 # curl on the farm is too old for `--json`
 result=$(
-  curl -L --fail-with-body \
+  curl -L --no-progress-meter --fail-with-body \
   -H "Content-Type: application/json" -H "Accept: application/json" \
   --data "$json" \
   "$FARMER_SERVER_BASE_URL/job-complete"
