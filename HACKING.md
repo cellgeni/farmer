@@ -69,6 +69,10 @@ $ uv run farmer-reporter
 $ uv run farmer-server
 ```
 
+If you want to run Farmer persistently, two sample systemd units are included as `farmer-server.service` and
+`farmer-reporter.service`. If running from a source checkout, you may need to prefix `ExecStart` with something like
+`/path/to/uv run --locked`, and set `WorkingDirectory=/path/to/checkout`.
+
 [uv]: https://docs.astral.sh/uv/
 
 ## Structure

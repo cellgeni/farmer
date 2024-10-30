@@ -1,0 +1,17 @@
+[Unit]
+Description=Farmer (Slack bot) reporter daemon
+Documentation=https://github.com/cellgeni/farmer
+After=default.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=farmer-reporter
+Type=simple
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+
+
