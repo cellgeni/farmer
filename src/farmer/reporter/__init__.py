@@ -180,18 +180,20 @@ class FarmerReporter:
             # copy the environment because we need the LSF variables to get bjobs info
             bjobs_env = os.environ.copy()
             bjobs_env["LSB_DISPLAY_YEAR"] = "Y"
-            proc = await asyncio.create_subprocess_exec(
-                "bjobs",
-                "-o",
-                "all",
-                "-json",
-                *args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=bjobs_env,
-            )
-            stdout, _ = await proc.communicate()
-            self._last_bjobs_call = time.monotonic_ns()
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "bjobs",
+                    "-o",
+                    "all",
+                    "-json",
+                    *args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=bjobs_env,
+                )
+                stdout, _ = await proc.communicate()
+            finally:
+                self._last_bjobs_call = time.monotonic_ns()
         if proc.returncode:
             raise BjobsError(f"bjobs exited with {proc.returncode}")
         try:
