@@ -199,7 +199,8 @@ class FarmerReporter:
         try:
             jobs = json.loads(stdout)
         except json.JSONDecodeError as e:
-            raise BjobsError("bjobs produced invalid JSON") from e
+            extract = stdout[max(e.pos - 30, 0) : e.pos + 30]
+            raise BjobsError(f"bjobs produced invalid JSON at index {e.pos}: {extract!r}") from e
         return jobs
 
     async def _bjobs_worker(self):
