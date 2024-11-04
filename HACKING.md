@@ -60,19 +60,23 @@ the URL configured above):
 export PORT=8080
 ```
 
-Make server certificate files available to the server at `key.pem` and `cert.pem`, for example by generating a
-self-signed certificate (for development only):
+If you want farmer-server to do its own TLS termination, make server certificate files available to the server at
+`key.pem` and `cert.pem`, for example by generating a self-signed certificate (for development only) for the IP or
+hostname farmer-server runs on:
 
 ```console
-$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes
+$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes \
+  -subj '/CN=your-ip-or-hostname' -addext "subjectAltName=DNS:your-hostname,IP:your-ip"
 ```
 
-If necessary (e.g. if using a self-signed certificate), make `cert.pem` available to the reporter and configure the path
-to it in `.env.reporter`:
+If necessary (e.g. if using a self-signed certificate), configure the path to `cert.pem` in `.env.reporter`:
 
 ```shell
 export FARMER_SSL_CA_FILE=/path/to/cert.pem
 ```
+
+If using a self-signed certificate, you will also need to add `--insecure` or `--cacert=/path/to/cert.pem` to the `curl`
+invocation in `post-exec.sh`.
 
 ### Running the app
 
