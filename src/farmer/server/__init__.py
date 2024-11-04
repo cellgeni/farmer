@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from datetime import timedelta
+from pathlib import Path
 
 import aiorun
 import uvicorn
@@ -525,7 +526,16 @@ def serve_uvicorn(server: uvicorn.Server):
 
 
 async def async_main():
-    server = uvicorn.Server(uvicorn.Config(ws_app, host="0.0.0.0", port=int(os.environ.get("PORT", 8234)), lifespan="off"))
+    server = uvicorn.Server(
+        uvicorn.Config(
+            ws_app,
+            host="0.0.0.0",
+            port=int(os.environ.get("PORT", 8234)),
+            lifespan="off",
+            ssl_keyfile="key.pem" if Path("key.pem").exists() else None,
+            ssl_certfile="cert.pem" if Path("cert.pem").exists() else None,
+        )
+    )
     slack = AsyncSocketModeHandler(slack_bot, os.environ["SLACK_APP_TOKEN"])
     # slack.start_async() would not properly dispose of resources on
     # exit, so we do it by hand...

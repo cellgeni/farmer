@@ -40,3 +40,4 @@ logs/
 
 # Secrets
 credentials.json
+*.pem

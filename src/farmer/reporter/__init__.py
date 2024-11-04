@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import subprocess
 import time
 import urllib.parse
@@ -338,10 +339,15 @@ async def async_main():
             scheme = "ws"
         case "https":
             scheme = "wss"
+    if cafile := os.environ.get("FARMER_SSL_CA_FILE"):
+        ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    else:
+        ssl_context = None
     async with WebSocketRpcClient(
             urllib.parse.urljoin(urlunparse((scheme, *rest)), "/internal/ws"),
             FarmerReporterRpc(reporter),
             on_disconnect=[on_disconnect],
+            ssl=ssl_context,
     ):
         await disconnected.wait()
     await reporter.stop()
