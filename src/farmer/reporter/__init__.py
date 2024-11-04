@@ -341,6 +341,7 @@ async def async_main():
             scheme = "wss"
     if cafile := os.environ.get("FARMER_SSL_CA_FILE"):
         ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+        logging.info("TLS: %r", cafile)
     else:
         ssl_context = None
     async with WebSocketRpcClient(

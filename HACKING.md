@@ -60,6 +60,20 @@ the URL configured above):
 export PORT=8080
 ```
 
+Make server certificate files available to the server at `key.pem` and `cert.pem`, for example by generating a
+self-signed certificate (for development only):
+
+```console
+$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes
+```
+
+If necessary (e.g. if using a self-signed certificate), make `cert.pem` available to the reporter and configure the path
+to it in `.env.reporter`:
+
+```shell
+export FARMER_SSL_CA_FILE=/path/to/cert.pem
+```
+
 ### Running the app
 
 Now you can run the app:

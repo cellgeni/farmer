@@ -526,14 +526,17 @@ def serve_uvicorn(server: uvicorn.Server):
 
 
 async def async_main():
+    ssl_keyfile = "key.pem" if Path("key.pem").exists() else None
+    ssl_certfile = "cert.pem" if Path("cert.pem").exists() else None
+    logging.info("TLS: %r, %r", ssl_keyfile, ssl_certfile)
     server = uvicorn.Server(
         uvicorn.Config(
             ws_app,
             host="0.0.0.0",
             port=int(os.environ.get("PORT", 8234)),
             lifespan="off",
-            ssl_keyfile="key.pem" if Path("key.pem").exists() else None,
-            ssl_certfile="cert.pem" if Path("cert.pem").exists() else None,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile,
         )
     )
     slack = AsyncSocketModeHandler(slack_bot, os.environ["SLACK_APP_TOKEN"])
