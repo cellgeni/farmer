@@ -13,7 +13,7 @@ from abc import abstractmethod, ABC
 from asyncio import CancelledError
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Sequence, Literal
+from typing import Any, Sequence, Literal, Callable, Awaitable
 from urllib.parse import urlunparse
 
 import aiorun
@@ -113,6 +113,7 @@ class BjobsQueryIds(BjobsQuery):
 
 
 class FarmerReporter:
+    queue_update_handler: Callable[..., Awaitable] | None = None
     _bjobs_worker_instance: asyncio.Task | None = None
 
     def __init__(self) -> None:
@@ -233,6 +234,8 @@ class FarmerReporter:
                 query.fut.set_result(result)
             finally:
                 self._bjobs_queue.task_done()
+                if self.queue_update_handler:
+                    await self.queue_update_handler(self._bjobs_queue.qsize())
 
     async def bjobs(self, query: BjobsQuery) -> asyncio.Future:
         """Enqueue a bjobs command.
@@ -349,7 +352,8 @@ async def async_main():
             FarmerReporterRpc(reporter),
             on_disconnect=[on_disconnect],
             ssl=ssl_context,
-    ):
+    ) as client:
+        reporter.queue_update_handler = client.other.update_queue_length
         await disconnected.wait()
     await reporter.stop()
     asyncio.get_running_loop().stop()

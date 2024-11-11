@@ -3,14 +3,14 @@ import json
 import logging
 import os
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from pathlib import Path
 
 import aiorun
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
-from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel
+from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel, RpcMethodsBase
 from fastapi_websocket_rpc.rpc_channel import RpcCaller
 from pydantic import BaseModel, model_validator
 from slack_bolt.async_app import AsyncApp
@@ -140,8 +140,19 @@ slack_app_client = AsyncWebClient(os.environ.get("SLACK_APP_TOKEN"))
 matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 
 
+async def wait_with_message(client, body, req, timeout=5):
+    async def notify(timeout, channel_id, user_id):
+        await asyncio.sleep(timeout)
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {rpc.queue_length or 1} request(s) in the queue.")
+    notifier = asyncio.create_task(notify(timeout, body["event"]["channel"], body["event"]["user"]))
+    result = (await req).result
+    notifier.cancel()
+    await asyncio.gather(notifier, return_exceptions=True)
+    return result
+
+
 @slack_bot.message("(?i)ping", [matchers.dms_only, matchers.received_by_bot])
-async def message_ping(ack, say):
+async def message_ping(ack, say, body, client, payload):
     await ack()
     ourself = await slack_bot.client.auth_test()
     bot_id = ourself["bot_id"]
@@ -151,13 +162,13 @@ async def message_ping(ack, say):
     await say(f"hello! I am {name}.")
     if dev_user := get_dev_user():
         await say(f":warning: Running in dev mode for user {dev_user}.")
-    cluster = (await rm.reporter.get_cluster_name()).result
+    cluster = await wait_with_message(client, body, rm.reporter.get_cluster_name())
     await say(f"I am running on cluster {cluster!r}.")
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
 @slack_bot.message("(?i)jobs", [matchers.dms_only, matchers.received_by_bot])
-async def message_jobs(message, say, client):
+async def message_jobs(message, say, client, body):
     logging.info(f"message {message}")
     # who's pinging?
     rx = message["blocks"][0]["elements"][0]["elements"][0]["text"]
@@ -170,7 +181,7 @@ async def message_jobs(message, say, client):
             # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
             user = (await client.users_info(user=message["user"]))["user"]["name"]
     # get jobs for user and say it back to them
-    jobs = (await rm.reporter.get_jobs(user=user)).result
+    jobs = await wait_with_message(client, body, rm.reporter.get_jobs(user=user))
     # build response blocks
     # header first "You haz jobs"
     blocks = [
@@ -195,7 +206,7 @@ async def handle_job_details(ack, body, logger, client):
     job_id, array_index = body["actions"][0]["value"].split("|")
     logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
     await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
-    jobs = (await rm.reporter.get_job_details(job_id=job_id)).result
+    jobs = await wait_with_message(client, body, rm.reporter.get_job_details(job_id=job_id))
     # just dump jobs, remove any keys without values, pretty print
     if len(jobs) == 1:
         job = jobs[0]
@@ -297,8 +308,22 @@ class ReporterManager:
 
 
 rm = ReporterManager()
+
+
+class FarmerServerRpc(RpcMethodsBase):
+    queue_length: int | None = None
+    queue_last_update: datetime | None = None
+
+    async def update_queue_length(self, *, queue_length: int) -> None:
+        """Update the server on the current length of the bjobs queue."""
+        self.queue_length = queue_length
+        self.queue_last_update = datetime.now(timezone.utc)
+
+
 ws_app = FastAPI()
+rpc = FarmerServerRpc()
 ws_endpoint = WebsocketRPCEndpoint(
+    rpc,
     # https://github.com/permitio/fastapi_websocket_rpc/issues/30
     on_connect=[rm.on_reporter_connect],  # type: ignore
     on_disconnect=[rm.on_reporter_disconnect],  # type: ignore
