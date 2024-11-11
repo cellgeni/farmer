@@ -27,16 +27,16 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(m
 
 # The minimum time between one bjobs invocation ending and the next
 # starting, in seconds.
-BJOBS_MIN_INTERVAL = 10
+BJOBS_MIN_INTERVAL = 60
 
 # The minimum time to wait before trying again if `bjobs` exits with a
 # nonzero exit code. This may indicate problems with the cluster.
-BJOBS_FAILURE_BACKOFF = 30
+BJOBS_FAILURE_BACKOFF = 60
 
 # The minimum time to wait before trying again if `lsid` fails to tell
 # us the cluster name, in seconds. This should be extremely rare unless
 # there are problems with the cluster.
-LSID_BACKOFF = 30
+LSID_BACKOFF = 60
 
 
 class BjobsError(Exception):
