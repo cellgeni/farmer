@@ -245,7 +245,7 @@ class FarmerReporter:
         qsize = self._bjobs_queue.qsize()
         logging.info("queue length: %s", qsize)
         if self.queue_update_handler:
-            if self._queue_update_task:
+            if self._queue_update_task and not self._queue_update_task.done():
                 logging.warning("queue update task ran too long, cancelling")
                 self._queue_update_task.cancel()
                 await asyncio.gather(self._queue_update_task, return_exceptions=True)
