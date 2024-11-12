@@ -143,7 +143,9 @@ matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 async def wait_with_message(client, body, req, timeout=5):
     async def notify(timeout, channel_id, user_id):
         await asyncio.sleep(timeout)
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {rm.queue_length or 'several'} request(s) in the queue.")
+        # The reported queue length does not include the currently-pending request.
+        queue_length = rm.queue_length + 1 if rm.queue_length is not None else "several"
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {queue_length} request(s) in the queue.")
     notifier = asyncio.create_task(notify(timeout, body["event"]["channel"], body["event"]["user"]))
     result = (await req).result
     notifier.cancel()

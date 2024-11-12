@@ -215,6 +215,7 @@ class FarmerReporter:
         while True:
             query = await self._bjobs_queue.get()
             logging.info("got query %r", query)
+            await self._send_queue_update()
             lock = query.lock or contextlib.nullcontext()
             try:
                 now = time.monotonic_ns()
@@ -235,7 +236,6 @@ class FarmerReporter:
                 query.fut.set_result(result)
             finally:
                 self._bjobs_queue.task_done()
-                await self._send_queue_update()
 
     async def _send_queue_update(self):
         """Queue an update about the length of the bjobs queue.
