@@ -143,7 +143,7 @@ matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 async def wait_with_message(client, body, req, timeout=5):
     async def notify(timeout, channel_id, user_id):
         await asyncio.sleep(timeout)
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {rpc.queue_length or 1} request(s) in the queue.")
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {rm.queue_length or 'several'} request(s) in the queue.")
     notifier = asyncio.create_task(notify(timeout, body["event"]["channel"], body["event"]["user"]))
     result = (await req).result
     notifier.cancel()
@@ -289,6 +289,9 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
 
 
 class ReporterManager:
+    queue_length: int | None = None
+    queue_last_update: datetime | None = None
+
     def __init__(self):
         self._reporters: list[RpcChannel] = []
 
@@ -311,24 +314,16 @@ rm = ReporterManager()
 
 
 class FarmerServerRpc(RpcMethodsBase):
-    queue_length: int | None = None
-    queue_last_update: datetime | None = None
+    def __init__(self, rm: ReporterManager):
+        self.__rm = rm
 
     async def update_queue_length(self, *, queue_length: int) -> None:
         """Update the server on the current length of the bjobs queue."""
-        self.queue_length = queue_length
-        self.queue_last_update = datetime.now(timezone.utc)
+        self.__rm.queue_length = queue_length
+        self.__rm.queue_last_update = datetime.now(timezone.utc)
 
 
 ws_app = FastAPI()
-rpc = FarmerServerRpc()
-ws_endpoint = WebsocketRPCEndpoint(
-    rpc,
-    # https://github.com/permitio/fastapi_websocket_rpc/issues/30
-    on_connect=[rm.on_reporter_connect],  # type: ignore
-    on_disconnect=[rm.on_reporter_disconnect],  # type: ignore
-)
-ws_endpoint.register_route(ws_app, "/internal/ws")
 
 
 class JobCompleteNotification(BaseModel):
@@ -554,6 +549,14 @@ async def async_main():
     ssl_keyfile = "key.pem" if Path("key.pem").exists() else None
     ssl_certfile = "cert.pem" if Path("cert.pem").exists() else None
     logging.info("TLS: %r, %r", ssl_keyfile, ssl_certfile)
+    rpc = FarmerServerRpc(rm)
+    ws_endpoint = WebsocketRPCEndpoint(
+        rpc,
+        # https://github.com/permitio/fastapi_websocket_rpc/issues/30
+        on_connect=[rm.on_reporter_connect],  # type: ignore
+        on_disconnect=[rm.on_reporter_disconnect],  # type: ignore
+    )
+    ws_endpoint.register_route(ws_app, "/internal/ws")
     server = uvicorn.Server(
         uvicorn.Config(
             ws_app,

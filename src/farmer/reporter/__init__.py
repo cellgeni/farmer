@@ -114,6 +114,7 @@ class BjobsQueryIds(BjobsQuery):
 
 class FarmerReporter:
     queue_update_handler: Callable[..., Awaitable] | None = None
+    _queue_update_task: asyncio.Task | None = None
     _bjobs_worker_instance: asyncio.Task | None = None
 
     def __init__(self) -> None:
@@ -234,8 +235,22 @@ class FarmerReporter:
                 query.fut.set_result(result)
             finally:
                 self._bjobs_queue.task_done()
-                if self.queue_update_handler:
-                    await self.queue_update_handler(self._bjobs_queue.qsize())
+                await self._send_queue_update()
+
+    async def _send_queue_update(self):
+        """Queue an update about the length of the bjobs queue.
+
+        If a previous update is still running, it will be cancelled.
+        """
+        qsize = self._bjobs_queue.qsize()
+        logging.info("queue length: %s", qsize)
+        if self.queue_update_handler:
+            if self._queue_update_task:
+                logging.warning("queue update task ran too long, cancelling")
+                self._queue_update_task.cancel()
+                await asyncio.gather(self._queue_update_task, return_exceptions=True)
+            logging.info("sending queue length (%s) update", qsize)
+            self._queue_update_task = asyncio.create_task(self.queue_update_handler(queue_length=qsize))
 
     async def bjobs(self, query: BjobsQuery) -> asyncio.Future:
         """Enqueue a bjobs command.
@@ -244,6 +259,7 @@ class FarmerReporter:
         with an exception or cancellation as appropriate.
         """
         await self._bjobs_queue.put(query)
+        await self._send_queue_update()
         return query.fut
 
     async def bjobs_for_user(self, user: str):
