@@ -22,7 +22,7 @@ from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
 
 
 load_dotenv(".env.reporter")
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.DEBUG if "FARMER_DEV_USER" in os.environ else logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
 # The minimum time between one bjobs invocation ending and the next

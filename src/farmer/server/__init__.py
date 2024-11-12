@@ -33,7 +33,7 @@ except ImportError:  # introduced in Python 3.11
 
 
 load_dotenv(".env.server")
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.DEBUG if "FARMER_DEV_USER" in os.environ else logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 
 # When our job-complete notification arrives, the job is still "running"
