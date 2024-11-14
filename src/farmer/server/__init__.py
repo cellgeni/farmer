@@ -164,7 +164,7 @@ async def message_ping(ack, say, body, client, payload):
     await say(f"hello! I am {name}.")
     if dev_user := get_dev_user():
         await say(f":warning: Running in dev mode for user {dev_user}.")
-    cluster = await wait_with_message(client, body, rm.reporter.get_cluster_name())
+    cluster = await rm.reporter.get_cluster_name()
     await say(f"I am running on cluster {cluster!r}.")
 
 # ahoy this is handeling the message that has the word JOBS in it
