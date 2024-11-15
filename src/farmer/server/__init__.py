@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from datetime import timedelta, datetime, timezone
 from pathlib import Path
 
@@ -155,71 +156,84 @@ async def wait_with_message(client, channel_id, user_id, req, timeout=5):
 
 @slack_bot.message("(?i)ping", [matchers.dms_only, matchers.received_by_bot])
 async def message_ping(ack, say, body, client, payload):
-    await ack()
-    ourself = await slack_bot.client.auth_test()
-    bot_id = ourself["bot_id"]
-    team_id = ourself["team_id"]
-    profile = await slack_bot.client.bots_info(bot=bot_id, team_id=team_id)
-    name = profile["bot"]["name"]
-    await say(f"hello! I am {name}.")
-    if dev_user := get_dev_user():
-        await say(f":warning: Running in dev mode for user {dev_user}.")
-    cluster = (await rm.reporter.get_cluster_name()).result
-    await say(f"I am running on cluster {cluster!r}.")
+    try:
+        await ack()
+        ourself = await slack_bot.client.auth_test()
+        bot_id = ourself["bot_id"]
+        team_id = ourself["team_id"]
+        profile = await slack_bot.client.bots_info(bot=bot_id, team_id=team_id)
+        name = profile["bot"]["name"]
+        await say(f"hello! I am {name}.")
+        if dev_user := get_dev_user():
+            await say(f":warning: Running in dev mode for user {dev_user}.")
+        cluster = (await rm.reporter.get_cluster_name()).result
+        await say(f"I am running on cluster {cluster!r}.")
+    except Exception as e:
+        await handle_error(e, client, channel=body["event"]["channel"])
+        raise
 
 # ahoy this is handeling the message that has the word JOBS in it
 # main use for now...
 @slack_bot.message("(?i)jobs", [matchers.dms_only, matchers.received_by_bot])
 async def message_jobs(message, say, client, body):
-    logging.info(f"message {message}")
-    # who's pinging?
-    rx = message["blocks"][0]["elements"][0]["elements"][0]["text"]
-    logging.info(f"recieved text '{rx}'")
-    user = extract_username(rx)
-    if not user:
-        try:
-            user = message["user_profile"]["name"]
-        except KeyError:
-            # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
-            user = (await client.users_info(user=message["user"]))["user"]["name"]
-    # get jobs for user and say it back to them
-    jobs = await wait_with_message(client, body["event"]["channel"], body["event"]["user"], rm.reporter.get_jobs(user=user))
-    # build response blocks
-    # header first "You haz jobs"
-    blocks = [
-        {
-            "type": "header",
-            "text": {"emoji": True, "text": f"📝 Jobs for {user} (only showing {min(len(jobs),20)} of {len(jobs)})", "type": "plain_text"},
-        }
-    ]
-    # sections latter (top 20 because there is a slack limit FML)
-    # also "sections" (aka tables) in slack are horrid
-    # sorry for you future me trying to style that
-    for job in jobs[:20]:
-        blocks.extend(make_job_blocks(job))
-    await say(blocks=blocks)
+    try:
+        logging.info(f"message {message}")
+        # who's pinging?
+        rx = message["blocks"][0]["elements"][0]["elements"][0]["text"]
+        logging.info(f"recieved text '{rx}'")
+        user = extract_username(rx)
+        if not user:
+            try:
+                user = message["user_profile"]["name"]
+            except KeyError:
+                # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
+                user = (await client.users_info(user=message["user"]))["user"]["name"]
+        # get jobs for user and say it back to them
+        jobs = await wait_with_message(client, body["event"]["channel"], body["event"]["user"], rm.reporter.get_jobs(user=user))
+        # build response blocks
+        # header first "You haz jobs"
+        blocks = [
+            {
+                "type": "header",
+                "text": {"emoji": True, "text": f"📝 Jobs for {user} (only showing {min(len(jobs),20)} of {len(jobs)})", "type": "plain_text"},
+            }
+        ]
+        # sections latter (top 20 because there is a slack limit FML)
+        # also "sections" (aka tables) in slack are horrid
+        # sorry for you future me trying to style that
+        for job in jobs[:20]:
+            blocks.extend(make_job_blocks(job))
+        await say(blocks=blocks)
+    except Exception as e:
+        await handle_error(e, client, channel=body["event"]["channel"])
+        raise
+
 
 # oh fancy you, wanna know more?
 # well here are the details for the job you asked for
 @slack_bot.action("job_details")
 async def handle_job_details(ack, body, logger, client):
-    await ack()
-    user = body["user"]["username"]
-    job_id, array_index = body["actions"][0]["value"].split("|")
-    logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
-    await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
-    jobs = await wait_with_message(client, body["channel"]["id"], body["user"]["id"], rm.reporter.get_job_details(job_id=job_id))
-    # just dump jobs, remove any keys without values, pretty print
-    if len(jobs) == 1:
-        job = jobs[0]
-    else:
-        assert array_index
-        job = next(j for j in jobs if j["JOBINDEX"] == array_index)
-    text = "\n".join(f"{k}: {v}" for k, v in job.items() if (
-        bool(v) and v != "-"  # remove things with empty values
-        and k not in LSF_IGNORED_KEYS  # remove uninteresting keys
-    ))
-    await client.chat_postMessage(channel=body["channel"]["id"], text=text)
+    try:
+        await ack()
+        user = body["user"]["username"]
+        job_id, array_index = body["actions"][0]["value"].split("|")
+        logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
+        await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
+        jobs = await wait_with_message(client, body["channel"]["id"], body["user"]["id"], rm.reporter.get_job_details(job_id=job_id))
+        # just dump jobs, remove any keys without values, pretty print
+        if len(jobs) == 1:
+            job = jobs[0]
+        else:
+            assert array_index
+            job = next(j for j in jobs if j["JOBINDEX"] == array_index)
+        text = "\n".join(f"{k}: {v}" for k, v in job.items() if (
+            bool(v) and v != "-"  # remove things with empty values
+            and k not in LSF_IGNORED_KEYS  # remove uninteresting keys
+        ))
+        await client.chat_postMessage(channel=body["channel"]["id"], text=text)
+    except Exception as e:
+        await handle_error(e, client, channel=body["channel"]["id"])
+        raise
         # # currently this code is unused
         # # TODO: do we want to condense job arrays into a single list entry by default?
         # blocks = [
@@ -288,6 +302,12 @@ async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
             ]),
         ]),
     ]))
+
+
+async def handle_error(exc, client, channel):
+    code = uuid.uuid4()
+    logging.exception("Handling error %s in %r: %r", code, channel, exc, exc_info=exc)
+    await client.chat_postMessage(channel=channel, text=f"Something went wrong. Please report this to CellGen Informatics (cellgeni@sanger.ac.uk) including this error code: `{code}`")
 
 
 class ReporterManager:
