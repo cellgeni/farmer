@@ -140,13 +140,13 @@ slack_app_client = AsyncWebClient(os.environ.get("SLACK_APP_TOKEN"))
 matchers = messaging.SlackMatchers(slack_bot.client, slack_app_client)
 
 
-async def wait_with_message(client, body, req, timeout=5):
+async def wait_with_message(client, channel_id, user_id, req, timeout=5):
     async def notify(timeout, channel_id, user_id):
         await asyncio.sleep(timeout)
         # The reported queue length does not include the currently-pending request.
         queue_length = rm.queue_length + 1 if rm.queue_length is not None else "several"
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text=f"Please hold – there are currently {queue_length} request(s) in the queue.")
-    notifier = asyncio.create_task(notify(timeout, body["event"]["channel"], body["event"]["user"]))
+    notifier = asyncio.create_task(notify(timeout, channel_id, user_id))
     result = (await req).result
     notifier.cancel()
     await asyncio.gather(notifier, return_exceptions=True)
@@ -183,7 +183,7 @@ async def message_jobs(message, say, client, body):
             # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
             user = (await client.users_info(user=message["user"]))["user"]["name"]
     # get jobs for user and say it back to them
-    jobs = await wait_with_message(client, body, rm.reporter.get_jobs(user=user))
+    jobs = await wait_with_message(client, body["event"]["channel"], body["event"]["user"], rm.reporter.get_jobs(user=user))
     # build response blocks
     # header first "You haz jobs"
     blocks = [
@@ -208,7 +208,7 @@ async def handle_job_details(ack, body, logger, client):
     job_id, array_index = body["actions"][0]["value"].split("|")
     logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
     await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
-    jobs = await wait_with_message(client, body, rm.reporter.get_job_details(job_id=job_id))
+    jobs = await wait_with_message(client, body["channel"]["id"], body["user"]["id"], rm.reporter.get_job_details(job_id=job_id))
     # just dump jobs, remove any keys without values, pretty print
     if len(jobs) == 1:
         job = jobs[0]
