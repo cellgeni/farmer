@@ -6,6 +6,7 @@ FARMER_SERVER_BASE_URL=http://farm22-cgi-01.internal.sanger.ac.uk:8234
 #
 # Options:
 #   --user=USER: a user to notify (if unspecified, use job owner)
+#   --label=LABEL: an arbitrary string to help identify your job
 # Positional arguments:
 #   USER: a user to notify (if unspecified, use job owner)
 
