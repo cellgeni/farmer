@@ -29,34 +29,43 @@ handle_positional() {
   esac
 }
 
+# Handle option parameters in "separated" form (`--option param`).
+# Calls should usually be followed by `&& shift`.
+handle_opt_param_sep() {
+  varname=$1
+  optname=$2
+  value=$3
+  if [ $# -gt 0 ]; then
+    export "$varname"="$value"
+  else
+    warn "missing parameter for $optname"
+    return 1
+  fi
+}
+
+# Handle option parameters in "joined" form (`--option=param`).
+handle_opt_param_join() {
+  varname=$1
+  optname=$2
+  export "$varname"="${arg#"$optname"=}"
+}
+
 # handle positional arguments and options
 while [ $# -gt 0 ]; do
   arg=$1
   shift
   case $arg in
     --user)
-      if [ $# -gt 0 ]; then
-        param=$1
-        shift
-        export FARMER_SLACK_USER="$param"
-      else
-        warn "missing parameter for $arg"
-      fi
+      handle_opt_param_sep FARMER_SLACK_USER --user "$1" && shift
       ;;
     --user=*)
-      export FARMER_SLACK_USER="${arg#--user=}"
+      handle_opt_param_join FARMER_SLACK_USER --user
       ;;
     --label)
-      if [ $# -gt 0 ]; then
-        param=$1
-        shift
-        export FARMER_LABEL="$param"
-      else
-        warn "missing parameter for $arg"
-      fi
+      handle_opt_param_sep FARMER_LABEL --label "$1" && shift
       ;;
     --label=*)
-      export FARMER_LABEL="${arg#--label=}"
+      handle_opt_param_join FARMER_LABEL --label
       ;;
     --)
       break
