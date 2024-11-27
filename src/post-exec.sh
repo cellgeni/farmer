@@ -7,6 +7,7 @@ FARMER_SERVER_BASE_URL=http://farm22-cgi-01.internal.sanger.ac.uk:8234
 # Options:
 #   --user=USER: a user to notify (if unspecified, use job owner)
 #   --label=LABEL: an arbitrary string to help identify your job
+#   --payload=PAYLOAD: an arbitrary string, like label (displayed in monospace)
 # Positional arguments:
 #   USER: a user to notify (if unspecified, use job owner)
 
@@ -67,6 +68,12 @@ while [ $# -gt 0 ]; do
     --label=*)
       handle_opt_param_join FARMER_LABEL --label
       ;;
+    --payload)
+      handle_opt_param_sep FARMER_PAYLOAD --payload "$1" && shift
+      ;;
+    --payload=*)
+      handle_opt_param_join FARMER_PAYLOAD --payload
+      ;;
     --)
       break
       ;;
@@ -92,7 +99,7 @@ fi
 echo "sending $you a notification that your job finished..."
 
 # don't read input, use compact output
-json=$(jq -nc '{job_id: $ENV.LSB_JOBID, array_index: $ENV.LSB_JOBINDEX, user_override: $ENV.FARMER_SLACK_USER, label: $ENV.FARMER_LABEL}')
+json=$(jq -nc '{job_id: $ENV.LSB_JOBID, array_index: $ENV.LSB_JOBINDEX, user_override: $ENV.FARMER_SLACK_USER, label: $ENV.FARMER_LABEL, payload: $ENV.FARMER_PAYLOAD}')
 # curl on the farm is too old for `--json`
 result=$(
   curl -L --no-progress-meter --fail-with-body \
