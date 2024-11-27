@@ -353,6 +353,7 @@ class JobCompleteNotification(BaseModel):
     array_index: str | None
     user_override: str | None
     label: str | None
+    payload: str | None
 
     @model_validator(mode="after")
     def validate(self) -> Self:
@@ -393,7 +394,7 @@ async def handle_job_complete(notification: JobCompleteNotification):
     #   post-exec script (to avoid providing an unauthenticated vector
     #   to send confusing messages to the owners of arbitrary jobs)
     if not notification.job_id:
-        await send_job_complete_message_simple(username=notification.user_override, label=notification.label)
+        await send_job_complete_message_simple(username=notification.user_override, label=notification.label, payload=notification.payload)
         return
     # When we're notified, the job will still be in RUN state. So we
     # need to wait a bit for things to quiesce (post-exec scripts, LSF
@@ -517,7 +518,7 @@ async def send_job_complete_message(job: dict, *, username: str, job_id: str, co
     )
 
 
-async def send_job_complete_message_simple(username: str, label: str | None):
+async def send_job_complete_message_simple(username: str, label: str | None, payload: str | None):
     if is_dev_mode() and username != (dev_user := get_dev_user()):
         logging.error("refusing to notify other user %r in dev mode for user %r", username, dev_user)
         return
@@ -527,10 +528,12 @@ async def send_job_complete_message_simple(username: str, label: str | None):
         logging.error("could not infer Slack user from %r (label %r)", username, label)
         return
     label = label or "(no label provided)"
+    payload_desc = "\nThe payload was: "
+    payload_str = f"{payload_desc}{payload}" if payload else ""
     footer = "You're receiving this message because you used Farmer's notification hook. For any queries, contact CellGen Informatics."
     await slack_bot.client.chat_postMessage(
         channel=user["id"],
-        text=f"Your job {label} has finished. Since it wasn't submitted via LSF, no details are available.\n{footer}",
+        text=f"Your job {label} has finished. Since it wasn't submitted via LSF, no details are available.{payload_str}\n{footer}",
         blocks=[
             RichTextBlock(elements=[
                 RichTextSectionElement(elements=[
@@ -540,7 +543,11 @@ async def send_job_complete_message_simple(username: str, label: str | None):
                         style=RichTextElementParts.TextStyle(bold=True),
                     ),
                     RichTextElementParts.Text(text=" has finished. Since it wasn't submitted via LSF, no details are available."),
+                    *([RichTextElementParts.Text(text=f"\n{payload_desc}")] if payload else []),
                 ]),
+                *([RichTextPreformattedElement(elements=[
+                    RichTextElementParts.Text(text=payload),
+                ])] if payload else []),
             ]),
             ContextBlock(elements=[
                 PlainTextObject(text=footer, emoji=False),
