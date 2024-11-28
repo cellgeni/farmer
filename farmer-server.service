@@ -10,8 +10,7 @@ ExecStart=farmer-server
 Type=simple
 Restart=always
 RestartSec=5
+SyslogIdentifier=farmer-server
 
 [Install]
 WantedBy=default.target
-
-
