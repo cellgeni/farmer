@@ -366,6 +366,7 @@ class JobCompleteNotification(BaseModel):
 async def job_complete(notification: JobCompleteNotification, bg: BackgroundTasks):
     # We want to let the post-exec script finish as soon as possible, so
     # return a response quickly and do the processing later.
+    logging.info("received job complete: %r", notification)
     bg.add_task(handle_job_complete, notification)
 
 

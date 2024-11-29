@@ -246,7 +246,7 @@ class FarmerReporter:
         logging.info("queue length: %s", qsize)
         if self.queue_update_handler:
             if self._queue_update_task and not self._queue_update_task.done():
-                logging.warning("queue update task ran too long, cancelling")
+                logging.debug("queue update task ran too long, cancelling")
                 self._queue_update_task.cancel()
                 await asyncio.gather(self._queue_update_task, return_exceptions=True)
             logging.info("sending queue length (%s) update", qsize)
@@ -369,8 +369,10 @@ async def async_main():
             on_disconnect=[on_disconnect],
             ssl=ssl_context,
     ) as client:
+        logging.info("connected to server at %s", client.uri)
         reporter.queue_update_handler = client.other.update_queue_length
         await disconnected.wait()
+    logging.info("quitting reporter")
     await reporter.stop()
     asyncio.get_running_loop().stop()
 
