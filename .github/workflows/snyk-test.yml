@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv export --all-packages --frozen --no-emit-project > requirements.txt
       - uses: snyk/actions/python@master
         with:
           args: --sarif-file-output=snyk.sarif
