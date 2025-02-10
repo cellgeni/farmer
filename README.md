@@ -22,6 +22,8 @@ or as a bsub comment:
 
 If you submit an array job with this post-exec script, you'll only be notified once every job in the array has finished.
 
+For more suggestions, see the [`examples` directory](./examples).
+
 ## Preemptively Answered Questions
 
 - **I don't use bsub, I use Nextflow** – Nextflow has built-in support for sending notifications when jobs finish. For example: `nextflow run -N you@email.example`
