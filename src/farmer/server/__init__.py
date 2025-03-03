@@ -164,6 +164,7 @@ async def message_ping(ack, say, body, client, payload):
         profile = await slack_bot.client.bots_info(bot=bot_id, team_id=team_id)
         name = profile["bot"]["name"]
         await say(f"hello! I am {name}.")
+        logging.info(f"incoming request: user {body['event']['user']} says ping")
         if dev_user := get_dev_user():
             await say(f":warning: Running in dev mode for user {dev_user}.")
         cluster = (await rm.reporter.get_cluster_name()).result
@@ -188,6 +189,7 @@ async def message_jobs(message, say, client, body):
             except KeyError:
                 # user_profile can be missing if the message is sent from mobile https://github.com/slackapi/bolt-js/issues/2062
                 user = (await client.users_info(user=message["user"]))["user"]["name"]
+        logging.info(f"incoming request: user {message['user']} queries jobs for {user!r}")
         # get jobs for user and say it back to them
         jobs = await wait_with_message(client, body["event"]["channel"], body["event"]["user"], rm.reporter.get_jobs(user=user))
         # build response blocks
@@ -217,6 +219,7 @@ async def handle_job_details(ack, body, logger, client):
         await ack()
         user = body["user"]["username"]
         job_id, array_index = body["actions"][0]["value"].split("|")
+        logging.info(f"incoming request: user {body['event']['user']} queries details for job {job_id}[{array_index}]")
         logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
         await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
         jobs = await wait_with_message(client, body["channel"]["id"], body["user"]["id"], rm.reporter.get_job_details(job_id=job_id))
@@ -249,6 +252,7 @@ async def handle_job_details(ack, body, logger, client):
 # tell them we don't know
 @slack_bot.event("message", [matchers.dms_only, matchers.received_by_bot])
 async def handle_message_events(body, logger):
+    logger.info(f"incoming request: user {body['event']['user']} makes an unknown query")
     logger.warning("Unknown message")
     logger.warning(body)
     # add "wtf are you talkin about?" response
@@ -263,7 +267,7 @@ async def handle_other_message():
 @slack_bot.event("app_home_opened")
 async def handle_app_home_open(ack, client: AsyncWebClient, event, logger):
     user_id = event["user"]
-    logger.info(f"handling app home open for {user_id}")
+    logger.info(f"incoming request: user {user_id} opens the farmer app page")
     await ack()
     user = await client.users_info(user=user_id)
     await client.views_publish(user_id=user_id, view=View(type="home", blocks=[
@@ -366,7 +370,7 @@ class JobCompleteNotification(BaseModel):
 async def job_complete(notification: JobCompleteNotification, bg: BackgroundTasks):
     # We want to let the post-exec script finish as soon as possible, so
     # return a response quickly and do the processing later.
-    logging.info("received job complete: %r", notification)
+    logging.info(f"incoming request: job completed: {notification!r}")
     bg.add_task(handle_job_complete, notification)
 
 
