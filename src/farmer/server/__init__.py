@@ -219,7 +219,7 @@ async def handle_job_details(ack, body, logger, client):
         await ack()
         user = body["user"]["username"]
         job_id, array_index = body["actions"][0]["value"].split("|")
-        logging.info(f"incoming request: user {body['event']['user']} queries details for job {job_id}[{array_index}]")
+        logging.info(f"incoming request: user {body['user']['id']} queries details for job {job_id}[{array_index}]")
         logger.info(f"Username = {user} - JobId = {job_id} - Index = {array_index}")
         await client.chat_postMessage(channel=body["channel"]["id"], text=f"Gathering details about job {job_id}...")
         jobs = await wait_with_message(client, body["channel"]["id"], body["user"]["id"], rm.reporter.get_job_details(job_id=job_id))
