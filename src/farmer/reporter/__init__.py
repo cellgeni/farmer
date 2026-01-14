@@ -56,7 +56,7 @@ def lsf_date_to_datetime(lsftime):
         Y = matches.group(4)
         return datetime.strptime(f"{b} {d} {HMS} {Y}", "%b %d %H:%M:%S %Y")
     except Exception as e:
-        logging.error(f"lsf_date_to_datetime {e}")
+        logging.error(f"lsf_date_to_datetime failed for {lsftime!r}: {e}")
         return None
 
 
