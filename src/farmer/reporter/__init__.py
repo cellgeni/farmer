@@ -27,7 +27,14 @@ logging.basicConfig(level=logging.DEBUG if "FARMER_DEV_USER" in os.environ else 
 
 # The minimum time between one bjobs invocation ending and the next
 # starting, in seconds.
-BJOBS_MIN_INTERVAL = 60
+BJOBS_MIN_INTERVAL = 15
+
+# The target average time between bjobs invocations, in seconds.
+BJOBS_AVERAGE_INTERVAL = 60
+
+# The number of bjobs invocations that should be allowed in a "burst"
+# (BJOBS_MIN_INTERVAL apart) before waiting BJOBS_AVERAGE_INTERVAL.
+BJOBS_BURST_LIMIT = 2
 
 # The minimum time to wait before trying again if `bjobs` exits with a
 # nonzero exit code. This may indicate problems with the cluster.
@@ -58,6 +65,55 @@ def lsf_date_to_datetime(lsftime):
     except Exception as e:
         logging.error(f"lsf_date_to_datetime failed for {lsftime!r}: {e}")
         return None
+
+
+class TokenPool:
+    """Pool of tokens that replenishes over time."""
+
+    START = 0
+    LIMIT = BJOBS_BURST_LIMIT
+    INTERVAL = BJOBS_AVERAGE_INTERVAL
+
+    def __init__(self):
+        self._value = self.START
+        self._limit = self.LIMIT
+        self._worker_task = None
+        self._cond = asyncio.Condition()
+
+    def start(self):
+        assert self._worker_task is None
+        self._worker_task = asyncio.create_task(self._worker())
+
+    async def stop(self):
+        self._worker_task.cancel()
+        await asyncio.gather(self._worker_task, return_exceptions=True)
+        self._worker_task = None
+
+    async def take(self):
+        """Wait for a token to become available, and take it."""
+        async with self._cond:
+            await self._cond.wait_for(self._pool_not_empty)
+            self._add(-1)
+
+    async def _worker(self):
+        while True:
+            async with self._cond:
+                await self._cond.wait_for(self._pool_not_full)
+            await asyncio.sleep(self.INTERVAL)
+            async with self._cond:
+                self._add(1)
+
+    def _add(self, n: int):
+        assert self._cond.locked()
+        self._value += n
+        assert 0 <= self._value <= self._limit, f"{self._value=!r}, {self._limit=!r}"
+        self._cond.notify()
+
+    def _pool_not_full(self):
+        return self._value < self._limit
+
+    def _pool_not_empty(self):
+        return self._value > 0
 
 
 @dataclass
@@ -212,30 +268,36 @@ class FarmerReporter:
         This worker is responsible for ratelimiting bjobs invocations,
         so there should usually only be a single worker running.
         """
-        while True:
-            query = await self._bjobs_queue.get()
-            logging.info("got query %r", query)
-            await self._send_queue_update()
-            lock = query.lock or contextlib.nullcontext()
-            try:
-                now = time.monotonic_ns()
-                waited = (now - self._last_bjobs_call) / 1e9
-                assert waited >= 0
-                if waited < BJOBS_MIN_INTERVAL:
-                    await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
-                async with lock:
-                    query.processing = True
-                result = await self._bjobs(*query.to_args())
-            except CancelledError:
-                query.fut.cancel()
-                raise
-            except Exception as e:
-                query.fut.set_exception(e)
-                await asyncio.sleep(BJOBS_FAILURE_BACKOFF)
-            else:
-                query.fut.set_result(result)
-            finally:
-                self._bjobs_queue.task_done()
+        pool = TokenPool()
+        pool.start()
+        try:
+            while True:
+                query = await self._bjobs_queue.get()
+                logging.info("got query %r", query)
+                await self._send_queue_update()
+                lock = query.lock or contextlib.nullcontext()
+                try:
+                    await pool.take()
+                    now = time.monotonic_ns()
+                    waited = (now - self._last_bjobs_call) / 1e9
+                    assert waited >= 0
+                    if waited < BJOBS_MIN_INTERVAL:
+                        await asyncio.sleep(BJOBS_MIN_INTERVAL - waited)
+                    async with lock:
+                        query.processing = True
+                    result = await self._bjobs(*query.to_args())
+                except CancelledError:
+                    query.fut.cancel()
+                    raise
+                except Exception as e:
+                    query.fut.set_exception(e)
+                    await asyncio.sleep(BJOBS_FAILURE_BACKOFF)
+                else:
+                    query.fut.set_result(result)
+                finally:
+                    self._bjobs_queue.task_done()
+        finally:
+            await pool.stop()
 
     async def _send_queue_update(self):
         """Queue an update about the length of the bjobs queue.
