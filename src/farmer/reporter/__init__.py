@@ -414,6 +414,8 @@ async def async_main():
             send_default_pii=True,
             enable_logs=True,
             traces_sample_rate=1.0,
+            profile_session_sample_rate=1.0,
+            profile_lifecycle="trace",
             integrations=[
                 AsyncioIntegration(),
             ],
