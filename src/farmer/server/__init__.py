@@ -587,6 +587,7 @@ async def async_main():
             dsn=sentry_dsn,
             send_default_pii=True,
             enable_logs=True,
+            traces_sample_rate=1.0,
             integrations=[
                 AsyncioIntegration(),
             ],
