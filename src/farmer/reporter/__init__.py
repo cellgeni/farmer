@@ -17,9 +17,10 @@ from typing import Any, Sequence, Literal, Callable, Awaitable
 from urllib.parse import urlunparse
 
 import aiorun
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi_websocket_rpc import RpcMethodsBase, WebSocketRpcClient
-
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 load_dotenv(".env.reporter")
 logging.basicConfig(level=logging.DEBUG if "FARMER_DEV_USER" in os.environ else logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
@@ -407,6 +408,15 @@ class FarmerReporterRpc(RpcMethodsBase):
 
 
 async def async_main():
+    if sentry_dsn := os.environ.get("SENTRY_DSN"):
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            send_default_pii=True,
+            enable_logs=True,
+            integrations=[
+                AsyncioIntegration(),
+            ],
+        )
     reporter = FarmerReporter()
     await reporter.start()
     # TODO: retry logic?

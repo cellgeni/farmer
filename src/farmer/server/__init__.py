@@ -8,12 +8,14 @@ from datetime import timedelta, datetime, timezone
 from pathlib import Path
 
 import aiorun
+import sentry_sdk
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
 from fastapi_websocket_rpc import WebsocketRPCEndpoint, RpcChannel, RpcMethodsBase
 from fastapi_websocket_rpc.rpc_channel import RpcCaller
 from pydantic import BaseModel, model_validator
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.errors import SlackApiError
@@ -580,6 +582,15 @@ def serve_uvicorn(server: uvicorn.Server):
 
 
 async def async_main():
+    if sentry_dsn := os.environ.get("SENTRY_DSN"):
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            send_default_pii=True,
+            enable_logs=True,
+            integrations=[
+                AsyncioIntegration(),
+            ],
+        )
     ssl_keyfile = "key.pem" if Path("key.pem").exists() else None
     ssl_certfile = "cert.pem" if Path("cert.pem").exists() else None
     logging.info("TLS: %r, %r", ssl_keyfile, ssl_certfile)

@@ -78,6 +78,18 @@ export FARMER_SSL_CA_FILE=/path/to/cert.pem
 If using a self-signed certificate, you will also need to add `--insecure` or `--cacert=/path/to/cert.pem` to the `curl`
 invocation in `post-exec.sh`.
 
+### Setting up Sentry
+
+> [!note]
+> This step is optional.
+
+Get a Sentry DSN (e.g. create a new Python project, or find the DSN for an existing one). Then add the following to
+`.env.reporter` and `.env.server`:
+
+```shell
+export SENTRY_DSN=https://...
+```
+
 ### Running the app
 
 Now you can run the app:
